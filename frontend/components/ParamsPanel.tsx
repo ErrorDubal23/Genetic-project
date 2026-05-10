@@ -33,12 +33,12 @@ interface FieldDef {
 }
 
 const FIELDS: FieldDef[] = [
-  { key: "population_size",  label: "Población",       min: 10,  max: 300, step: 1,    hint: "Paper: 70" },
+  { key: "population_size",  label: "Poblacion",       min: 10,  max: 300, step: 1,    hint: "Paper: 70" },
   { key: "crossover_prob",   label: "Prob. crossover", min: 0,   max: 1,   step: 0.01, hint: "Paper: 0.55" },
-  { key: "mutation_prob",    label: "Prob. mutación",  min: 0,   max: 1,   step: 0.01, hint: "Paper: 0.10" },
-  { key: "elite_count",      label: "Élite",           min: 0,   max: 10,  step: 1,    hint: "Paper: 2" },
+  { key: "mutation_prob",    label: "Prob. mutacion",  min: 0,   max: 1,   step: 0.01, hint: "Paper: 0.10" },
+  { key: "elite_count",      label: "Elite",           min: 0,   max: 10,  step: 1,    hint: "Paper: 2" },
   { key: "max_generations",  label: "Generaciones",    min: 10,  max: 2000,step: 10,   hint: "Paper: 500" },
-  { key: "delta",            label: "Tolerancia δ (px)",min: 0.5,max: 10,  step: 0.5,  hint: "Paper: ~2 px" },
+  { key: "delta",            label: "Tolerancia (px)", min: 0.5, max: 10,  step: 0.5,  hint: "Paper: ~2 px" },
 ];
 
 export default function ParamsPanel({ params, onChange }: Props) {
@@ -47,14 +47,11 @@ export default function ParamsPanel({ params, onChange }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="text-xs text-[#555] uppercase tracking-widest pb-1 border-b border-[#1e1e1e]">
-        Parámetros del GA
-      </div>
       {FIELDS.map(({ key, label, min, max, step, hint }) => (
-        <div key={key} className="flex flex-col gap-1">
+        <div key={key} className="flex flex-col gap-1.5">
           <div className="flex justify-between items-baseline">
-            <label className="text-xs text-[#aaa]">{label}</label>
-            <span className="text-xs text-[#666]">{hint}</span>
+            <label className="text-xs text-[#94a3b8]">{label}</label>
+            <span className="text-[10px] text-[#475569]">{hint}</span>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -64,7 +61,7 @@ export default function ParamsPanel({ params, onChange }: Props) {
               step={step}
               value={params[key]}
               onChange={(e) => set(key, parseFloat(e.target.value))}
-              className="flex-1 accent-white h-[2px]"
+              className="flex-1"
             />
             <input
               type="number"
@@ -73,8 +70,9 @@ export default function ParamsPanel({ params, onChange }: Props) {
               step={step}
               value={params[key]}
               onChange={(e) => set(key, parseFloat(e.target.value))}
-              className="w-16 bg-[#0d0d0d] border border-[#2a2a2a] rounded px-2 py-0.5
-                         text-xs text-white text-right focus:outline-none focus:border-[#444]"
+              className="w-16 bg-[#0b1120] border border-[#1e293b] rounded px-2 py-0.5
+                         text-xs text-[#e2e8f0] text-right focus:outline-none focus:border-[#3b82f6]
+                         transition-colors"
             />
           </div>
         </div>
@@ -82,9 +80,13 @@ export default function ParamsPanel({ params, onChange }: Props) {
 
       <button
         onClick={() => onChange(DEFAULT_PARAMS)}
-        className="mt-2 text-xs text-[#444] hover:text-[#888] transition-colors text-left"
+        className="mt-2 text-xs text-[#475569] hover:text-[#94a3b8] transition-colors text-left flex items-center gap-1"
       >
-        ↺ restaurar valores del paper
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="1 4 1 10 7 10" />
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+        </svg>
+        Restaurar valores del paper
       </button>
     </div>
   );

@@ -1,11 +1,12 @@
 "use client";
+
 import { useState, useEffect, useRef } from "react";
 
 const FILES: Record<string, string> = {
   "genetic_algorithm.py": `class GeneticCircleDetector:
     """
-    Ayala-Ramírez et al. (2006) — Sección 4
-    Representación: 3 índices de puntos de borde.
+    Ayala-Ramirez et al. (2006) - Seccion 4
+    Representacion: 3 indices de puntos de borde.
     """
     def __init__(self, population_size=70, crossover_prob=0.55,
                  mutation_prob=0.10, elite_count=2, max_generations=500):
@@ -36,8 +37,8 @@ const FILES: Record<string, string> = {
 
   "fitness.py": `def evaluate_fitness(individual, edge_points, img_shape, delta=2.0):
     """
-    Aptitud = fracción de puntos de borde a distancia <= delta
-    del círculo candidato.  Eq. (1) — Ayala-Ramírez et al. (2006)
+    Aptitud = fraccion de puntos de borde a distancia <= delta
+    del circulo candidato.  Eq. (1) - Ayala-Ramirez et al. (2006)
     """
     p1, p2, p3 = edge_points[individual]
     result = circle_from_three_points(p1, p2, p3)
@@ -62,7 +63,7 @@ const FILES: Record<string, string> = {
     return edge`,
 };
 
-const SPEED = 18; // chars per frame tick (ms)
+const SPEED = 18;
 
 export default function CodeViewer() {
   const tabs = Object.keys(FILES);
@@ -98,17 +99,24 @@ export default function CodeViewer() {
   }, [active]);
 
   return (
-    <div className="rounded border border-[#2a2a2a] bg-[#0a0a0a] overflow-hidden text-xs font-mono">
+    <div className="rounded-lg border border-[#1e293b] bg-[#0b1120] overflow-hidden text-xs font-mono">
+      {/* Barra estilo Mac */}
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-[#0f172a] border-b border-[#1e293b]">
+        <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
+        <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
+        <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
+      </div>
+
       {/* Tabs */}
-      <div className="flex border-b border-[#1e1e1e] overflow-x-auto">
+      <div className="flex border-b border-[#1e293b] overflow-x-auto bg-[#0b1120]">
         {tabs.map((t) => (
           <button
             key={t}
             onClick={() => setActive(t)}
-            className={`px-4 py-2 text-[11px] whitespace-nowrap transition-colors
+            className={`px-4 py-2.5 text-[11px] whitespace-nowrap transition-colors
               ${active === t
-                ? "text-white border-b border-white -mb-px bg-[#141414]"
-                : "text-[#555] hover:text-[#888]"
+                ? "text-[#60a5fa] border-b border-[#3b82f6] -mb-px bg-[#0f172a]"
+                : "text-[#475569] hover:text-[#94a3b8]"
               }`}
           >
             {t}
@@ -118,9 +126,9 @@ export default function CodeViewer() {
 
       {/* Code body */}
       <div className="p-4 overflow-auto max-h-[340px]">
-        <pre className="leading-relaxed text-[#ccc]">
+        <pre className="leading-relaxed text-[#94a3b8]">
           {displayed}
-          {typing && <span className="animate-pulse text-white">▌</span>}
+          {typing && <span className="animate-pulse text-[#60a5fa]">|</span>}
         </pre>
       </div>
     </div>
