@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { DEFAULT_PARAMS } from "@/components/ParamsPanel";
 
 // ── Archivos que se muestran (en este orden) ─────────────────────────────────
@@ -124,6 +125,10 @@ export default function TerminalPanel({
 
   const [active,  setActive]  = useState(ARCHIVOS[0]);
   const [metrics, setMetrics] = useState({ gen: 0, fitness: 0, history: [] as number[] });
+
+  // Necesario para Portal en Next.js (document.body no existe en SSR)
+  const [montado, setMontado] = useState(false);
+  useEffect(() => { setMontado(true); }, []);
 
   // Estado del modo expandido
   const [modalAbierto,     setModalAbierto]     = useState(false);
@@ -326,9 +331,15 @@ export default function TerminalPanel({
           style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "#0a0a0a" }}
         >
           <div className="flex gap-1.5">
-            {["#ff5f57", "#febc2e", "#28c840"].map((color, i) => (
-              <div key={i} className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-            ))}
+            {/* Rojo y amarillo: decorativos. Verde: expande a pantalla completa */}
+            <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#ff5f57" }} />
+            <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#febc2e" }} />
+            <button
+              onClick={() => setModalAbierto(true)}
+              title="Pantalla completa"
+              className="w-2.5 h-2.5 rounded-full transition-opacity hover:opacity-70"
+              style={{ background: "#28c840", border: "none", cursor: "pointer", padding: 0 }}
+            />
           </div>
           <div className="flex-1 text-center select-none" style={{ color: "rgba(255,255,255,0.2)", fontSize: 10 }}>
             {loading ? `● ejecutando ${active}` : active}
@@ -439,11 +450,11 @@ export default function TerminalPanel({
         </div>
       </div>
 
-      {/* ── Modal expandido ── */}
-      {modalAbierto && (
+      {/* ── Modal expandido — Portal sobre document.body para saltar cualquier stacking context ── */}
+      {modalAbierto && montado && createPortal(
         <div
           style={{
-            position: "fixed", inset: 0, zIndex: 9999,
+            position: "fixed", inset: 0, zIndex: 99999,
             background: "#0c0c0c",
             display: "flex", flexDirection: "column",
             overflow: "hidden",
@@ -457,14 +468,9 @@ export default function TerminalPanel({
               style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "#0a0a0a" }}
             >
               <div className="flex gap-1.5">
-                {/* Rojo cierra el modal */}
-                <button
-                  onClick={() => setModalAbierto(false)}
-                  className="w-2.5 h-2.5 rounded-full transition-opacity"
-                  style={{ background: "#ff5f57", border: "none", cursor: "pointer", padding: 0 }}
-                  title="Cerrar (Esc)"
-                />
-                <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#febc2e" }} />
+                {/* Rojo y amarillo: colapsan a vista normal. Verde: ya está en pantalla completa */}
+                <button onClick={() => setModalAbierto(false)} title="Cerrar (Esc)" className="w-2.5 h-2.5 rounded-full hover:opacity-70 transition-opacity" style={{ background: "#ff5f57", border: "none", cursor: "pointer", padding: 0 }} />
+                <button onClick={() => setModalAbierto(false)} title="Minimizar" className="w-2.5 h-2.5 rounded-full hover:opacity-70 transition-opacity" style={{ background: "#febc2e", border: "none", cursor: "pointer", padding: 0 }} />
                 <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#28c840" }} />
               </div>
               <div className="flex-1 text-center select-none" style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}>
@@ -616,7 +622,7 @@ export default function TerminalPanel({
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </>
   );
 }
