@@ -78,6 +78,13 @@ body {
 .sh-nm { color: #b5cea8; }
 .sh-df { color: #9cdcfe; }
 
+/* ── Float — ícono de carga ── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px);  }
+  50%       { transform: translateY(-8px); }
+}
+.icon-float { animation: float 3s ease-in-out infinite; }
+
 /* ── Slider ── */
 input[type=range] {
   -webkit-appearance: none;

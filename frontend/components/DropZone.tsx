@@ -93,12 +93,12 @@ export default function DropZone({ onFile, preview, loading = false }: Props) {
           </div>
         ) : (
           <div className="flex flex-col items-center gap-4 select-none px-8 py-10">
-            {/* Upload icon */}
+            {/* Upload icon con animación float */}
             <div
-              className="w-14 h-14 rounded-xl flex items-center justify-center"
-              style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)" }}
+              className={`w-14 h-14 rounded-xl flex items-center justify-center ${dragging ? "" : "icon-float"}`}
+              style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", transition: "transform 0.3s, border-color 0.3s", borderColor: dragging ? "rgba(255,255,255,0.35)" : undefined }}
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={dragging ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }}>
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
