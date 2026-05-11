@@ -1,18 +1,31 @@
 import type { Metadata } from "next";
+import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
+const sans = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+  weight: ["300", "400", "500", "600", "700"],
+});
+
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+  weight: ["300", "400", "500"],
+});
+
 export const metadata: Metadata = {
-  title: "CircleGA - Genetic Algorithm Circle Detector",
-  description: "Deteccion de circulos mediante algoritmos geneticos (Ayala-Ramirez et al., 2006)",
+  title: "CircleGA — Detección Genética de Círculos",
+  description:
+    "Evolución computacional aplicada a visión artificial · Ayala-Ramírez et al. (2006)",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-      </head>
-      <body>{children}</body>
+      <body className={`${sans.variable} ${mono.variable}`}>{children}</body>
     </html>
   );
 }

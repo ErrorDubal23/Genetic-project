@@ -1,45 +1,113 @@
+"""
+Utilidades para carga y procesamiento de imágenes.
+Incluye detección de bordes con Canny y submuestreo de puntos.
+"""
+
 import cv2
 import numpy as np
-from PIL import Image
-import io
+import base64
+
+# ── Constantes de preprocesamiento ──────────────────────────────────────────
+KERNEL_DESENFOQUE = (5, 5)
+
+# Límite de puntos de borde que recibe el GA.
+# Con más de este número el fitness se diluye tanto que la selección
+# deja de discriminar: todos los individuos tienen aptitud ~0 sin importar
+# si forman un círculo real o no.
+MAX_PUNTOS_BORDE = 3000
 
 
-def load_image_from_bytes(data: bytes) -> np.ndarray:
-    arr = np.frombuffer(data, np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError("No se pudo decodificar la imagen")
-    return img
+# ── Carga de imagen ──────────────────────────────────────────────────────────
+
+def cargar_imagen_desde_bytes(datos_imagen: bytes) -> np.ndarray:
+    """
+    Convierte bytes de un archivo de imagen en un array NumPy (BGR).
+    Lanza ValueError si los datos no corresponden a una imagen válida.
+    """
+    arreglo_bytes = np.frombuffer(datos_imagen, np.uint8)
+    imagen = cv2.imdecode(arreglo_bytes, cv2.IMREAD_COLOR)
+
+    if imagen is None:
+        raise ValueError("No se pudo decodificar la imagen. Verifica que el formato sea válido.")
+
+    return imagen
 
 
-def preprocess(img: np.ndarray) -> np.ndarray:
-    """Convierte a escala de grises y aplica Sobel para obtener mapa de bordes."""
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    sx = cv2.Sobel(blur, cv2.CV_64F, 1, 0, ksize=3)
-    sy = cv2.Sobel(blur, cv2.CV_64F, 0, 1, ksize=3)
-    mag = np.sqrt(sx**2 + sy**2)
-    mag = np.uint8(255 * mag / mag.max())
-    _, edge = cv2.threshold(mag, 30, 255, cv2.THRESH_BINARY)
-    return edge
+# ── Preprocesamiento ─────────────────────────────────────────────────────────
+
+def preprocesar(imagen: np.ndarray) -> np.ndarray:
+    """
+    Detecta los bordes de la imagen usando el algoritmo Canny.
+
+    Canny produce bordes delgados (1 px) y bien conectados, lo que es
+    ideal para el GA: entrega menos puntos y de mejor calidad que Sobel.
+
+    El umbral se calcula automáticamente a partir de la mediana de la imagen
+    para adaptarse a distintas condiciones de iluminación y contraste.
+
+    Retorna un mapa binario donde los píxeles blancos (255) son bordes.
+    """
+    gris      = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
+    suavizada = cv2.GaussianBlur(gris, KERNEL_DESENFOQUE, 1)
+
+    # Umbral automático basado en la mediana del histograma
+    mediana     = float(np.median(suavizada))
+    umbral_bajo = max(0,   int(0.67 * mediana))
+    umbral_alto = min(255, int(1.33 * mediana))
+
+    # Garantizar un mínimo de contraste en los umbrales
+    if umbral_alto - umbral_bajo < 20:
+        umbral_bajo = 30
+        umbral_alto = 100
+
+    mapa_bordes = cv2.Canny(suavizada, umbral_bajo, umbral_alto)
+    return mapa_bordes
 
 
-def get_edge_points(edge_map: np.ndarray) -> np.ndarray:
-    """Devuelve array (N, 2) con coordenadas [col, row] de los píxeles de borde."""
-    rows, cols = np.where(edge_map > 0)
-    return np.column_stack((cols, rows)).astype(np.float64)
+def obtener_puntos_borde(mapa_bordes: np.ndarray) -> np.ndarray:
+    """
+    Extrae las coordenadas (x, y) de todos los píxeles de borde.
+
+    Si el número de puntos supera MAX_PUNTOS_BORDE, toma una muestra
+    aleatoria uniforme. Esto mantiene el fitness en un rango útil (>5%)
+    sin sacrificar la representación espacial del borde.
+
+    Retorna un array de forma (N, 2) con columnas [x, y].
+    """
+    filas, columnas = np.where(mapa_bordes > 0)
+    puntos_borde    = np.column_stack((columnas, filas)).astype(np.float64)
+
+    if len(puntos_borde) > MAX_PUNTOS_BORDE:
+        indices_muestra = np.random.choice(len(puntos_borde), MAX_PUNTOS_BORDE, replace=False)
+        puntos_borde    = puntos_borde[indices_muestra]
+
+    return puntos_borde
 
 
-def annotate_image(img: np.ndarray, circles: list[dict]) -> np.ndarray:
-    out = img.copy()
-    for c in circles:
-        x, y, r = int(c["x"]), int(c["y"]), int(c["r"])
-        cv2.circle(out, (x, y), r, (255, 255, 255), 2)
-        cv2.circle(out, (x, y), 3, (200, 200, 200), -1)
-    return out
+# ── Anotación y exportación ──────────────────────────────────────────────────
+
+def anotar_imagen(imagen: np.ndarray, circulos: list) -> np.ndarray:
+    """
+    Dibuja cada círculo detectado sobre una copia de la imagen original.
+    Marca el contorno del círculo y un punto en su centro.
+    """
+    imagen_anotada = imagen.copy()
+
+    for circulo in circulos:
+        centro_x = int(circulo["x"])
+        centro_y = int(circulo["y"])
+        radio    = int(circulo["r"])
+
+        cv2.circle(imagen_anotada, (centro_x, centro_y), radio, (255, 255, 255), 2)
+        cv2.circle(imagen_anotada, (centro_x, centro_y), 3,     (200, 200, 200), -1)
+
+    return imagen_anotada
 
 
-def ndarray_to_b64(img: np.ndarray) -> str:
-    import base64
-    _, buf = cv2.imencode(".png", img)
-    return base64.b64encode(buf.tobytes()).decode()
+def imagen_a_base64(imagen: np.ndarray) -> str:
+    """
+    Codifica un array NumPy (imagen) como cadena base64 en formato PNG.
+    """
+    _, buffer  = cv2.imencode(".png", imagen)
+    cadena_b64 = base64.b64encode(buffer.tobytes()).decode()
+    return cadena_b64
