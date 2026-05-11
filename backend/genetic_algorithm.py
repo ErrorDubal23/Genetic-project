@@ -23,11 +23,13 @@ NUMERO_REINICIOS           = 3    # Cuántas veces se reinicia el GA desde cero
 INTENTOS_INICIALIZACION    = 8    # Intentos para encontrar 3 puntos bien separados
 DISTANCIA_MINIMA_PUNTOS    = 15   # Separación mínima (px) entre los 3 puntos
 
-APTITUD_MINIMA_ACEPTABLE   = 0.20 # Aptitud mínima para aceptar un círculo como real
-MARGEN_SUPRESION           = 8    # Multiplicador de delta para eliminar puntos ya usados
-MAX_CIRCULOS_POSIBLES      = 20   # Límite de seguridad para evitar bucles infinitos
-MINIMOS_PUNTOS_RESTANTES   = 50   # Mínimo de puntos para intentar otra detección
-UMBRAL_SIMILITUD_CIRCULOS  = 20   # Distancia (px) para considerar dos círculos iguales
+APTITUD_MINIMA_PRIMER       = 0.20 # Aptitud mínima absoluta para el primer círculo
+FRACCION_APTITUD_MINIMA     = 0.30 # Los siguientes deben tener al menos el 30% del primero
+MARGEN_SUPRESION            = 8    # Multiplicador de delta para eliminar puntos ya usados
+MAX_CIRCULOS_POSIBLES       = 20   # Límite de seguridad para evitar bucles infinitos
+MINIMOS_PUNTOS_RESTANTES    = 50   # Mínimo de puntos para intentar otra detección
+UMBRAL_DUPLICADO_CENTRO     = 10   # Diferencia máxima de centro (px) para considerar duplicado
+UMBRAL_DUPLICADO_RADIO      = 15   # Diferencia máxima de radio (px) para considerar duplicado
 
 
 #  Clase principal 
@@ -268,7 +270,7 @@ class DetectorCirculosGA:
         for c in circulos_encontrados:
             dist_centros = ((cx - c["x"]) ** 2 + (cy - c["y"]) ** 2) ** 0.5
             diff_radio   = abs(r - c["r"])
-            if dist_centros < UMBRAL_SIMILITUD_CIRCULOS and diff_radio < UMBRAL_SIMILITUD_CIRCULOS:
+            if dist_centros < UMBRAL_DUPLICADO_CENTRO and diff_radio < UMBRAL_DUPLICADO_RADIO:
                 return True
         return False
 
@@ -292,6 +294,7 @@ class DetectorCirculosGA:
         circulos_encontrados  = []
         aptitudes_encontradas = []
         puntos_disponibles    = puntos_borde.copy()
+        aptitud_referencia    = None   # aptitud del primer círculo encontrado
 
         while len(circulos_encontrados) < MAX_CIRCULOS_POSIBLES:
             if len(puntos_disponibles) < MINIMOS_PUNTOS_RESTANTES:
@@ -301,9 +304,18 @@ class DetectorCirculosGA:
                 puntos_disponibles, forma_imagen, delta
             )
 
-            # Parar si no hay evidencia suficiente de un círculo real
-            if circulo is None or aptitud < APTITUD_MINIMA_ACEPTABLE:
+            if circulo is None:
                 break
+
+            # Primer círculo: umbral absoluto para asegurar calidad mínima
+            if aptitud_referencia is None:
+                if aptitud < APTITUD_MINIMA_PRIMER:
+                    break
+                aptitud_referencia = aptitud
+            else:
+                # Círculos siguientes: umbral relativo al primero (adapta a la imagen)
+                if aptitud < aptitud_referencia * FRACCION_APTITUD_MINIMA:
+                    break
 
             # Parar si es casi igual a un círculo que ya encontramos
             if self._es_duplicado(circulo, circulos_encontrados):
