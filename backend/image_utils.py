@@ -8,7 +8,7 @@ import numpy as np
 import base64
 
 #  Constantes de preprocesamiento 
-KERNEL_DESENFOQUE = (5, 5)
+KERNEL_DESENFOQUE = (7, 7)   # Kernel más amplio para suavizar textura interna
 
 MAX_PUNTOS_BORDE = 3000
 
@@ -36,7 +36,7 @@ def preprocesar(imagen: np.ndarray) -> np.ndarray:
     Detecta los bordes de la imagen usando el algoritmo Canny.
     """
     gris      = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
-    suavizada = cv2.GaussianBlur(gris, KERNEL_DESENFOQUE, 1)
+    suavizada = cv2.GaussianBlur(gris, KERNEL_DESENFOQUE, 2)
 
     # Umbral automático basado en la mediana del histograma
     mediana     = float(np.median(suavizada))

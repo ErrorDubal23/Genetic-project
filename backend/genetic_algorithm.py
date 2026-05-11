@@ -324,14 +324,17 @@ class DetectorCirculosGA:
             circulos_encontrados.append(circulo)
             aptitudes_encontradas.append(aptitud)
 
-            # Suprimir puntos cercanos al círculo recién detectado
+            # Enmascarar el disco completo del círculo detectado.
+            # El paper (sección 3.4) dice: "This shape is then masked on the
+            # edge image". La fórmula anterior solo quitaba la banda del
+            # perímetro, dejando el interior intacto y permitiendo que la
+            # textura interna generara círculos fantasma.
             cx, cy, r = circulo["x"], circulo["y"], circulo["r"]
-            dist_al_centro    = np.sqrt(
+            dist_al_centro = np.sqrt(
                 (puntos_disponibles[:, 0] - cx) ** 2 +
                 (puntos_disponibles[:, 1] - cy) ** 2
             )
-            dist_al_perimetro = np.abs(dist_al_centro - r)
-            mascara_lejanos   = dist_al_perimetro > delta * MARGEN_SUPRESION
+            mascara_lejanos    = dist_al_centro > r + delta * MARGEN_SUPRESION
             puntos_disponibles = puntos_disponibles[mascara_lejanos]
 
         mejor_aptitud_global = aptitudes_encontradas[0] if aptitudes_encontradas else 0.0
