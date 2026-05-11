@@ -92,9 +92,11 @@ export default function TerminalPanel({
   loading, maxGenerations, populationSize, mutationProb, result,
 }: Props) {
   // Código real cargado desde el backend
-  const [codigos, setCodigos]   = useState<Record<string, string>>({});
-  const [cargando, setCargando] = useState(true);
-  const [errorRed, setErrorRed] = useState(false);
+  const [codigos,    setCodigos]    = useState<Record<string, string>>({});
+  const [codigosRaw, setCodigosRaw] = useState<Record<string, string>>({});
+  const [cargando,   setCargando]   = useState(true);
+  const [errorRed,   setErrorRed]   = useState(false);
+  const [copiado,    setCopiado]    = useState(false);
 
   const [active,  setActive]  = useState(ARCHIVOS[0]);
   const [metrics, setMetrics] = useState({ gen: 0, fitness: 0, history: [] as number[] });
@@ -114,14 +116,20 @@ export default function TerminalPanel({
           .then((r) => r.json())
           .then((data: { archivo: string; contenido: string }) => ({
             archivo: data.archivo,
-            html: resaltarPython(data.contenido),
+            html:    resaltarPython(data.contenido),
+            raw:     data.contenido,
           }))
       )
     )
       .then((resultados) => {
-        const mapa: Record<string, string> = {};
-        resultados.forEach(({ archivo, html }) => { mapa[archivo] = html; });
-        setCodigos(mapa);
+        const mapaHtml: Record<string, string> = {};
+        const mapaRaw:  Record<string, string> = {};
+        resultados.forEach(({ archivo, html, raw }) => {
+          mapaHtml[archivo] = html;
+          mapaRaw[archivo]  = raw;
+        });
+        setCodigos(mapaHtml);
+        setCodigosRaw(mapaRaw);
         setCargando(false);
       })
       .catch(() => {
@@ -211,6 +219,51 @@ export default function TerminalPanel({
         >
           {loading ? `● ejecutando ${active}` : active}
         </div>
+        {/* Botón copiar código */}
+        {!cargando && !errorRed && (
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(codigosRaw[active] ?? "");
+              setCopiado(true);
+              setTimeout(() => setCopiado(false), 2000);
+            }}
+            title="Copiar código"
+            style={{
+              background: "none",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 5,
+              cursor: "pointer",
+              padding: "2px 7px",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: 9,
+              color: copiado ? "rgba(100,220,100,0.9)" : "rgba(255,255,255,0.3)",
+              transition: "all 0.2s",
+              whiteSpace: "nowrap",
+            }}
+            onMouseEnter={(e) => { if (!copiado) e.currentTarget.style.color = "rgba(255,255,255,0.8)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
+            onMouseLeave={(e) => { if (!copiado) e.currentTarget.style.color = "rgba(255,255,255,0.3)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
+          >
+            {copiado ? (
+              <>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Copiado
+              </>
+            ) : (
+              <>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                Copiar
+              </>
+            )}
+          </button>
+        )}
+
         {/* Barras ecualizadoras durante ejecución */}
         {loading && (
           <div className="flex items-end gap-[2px]" style={{ height: 12 }}>
