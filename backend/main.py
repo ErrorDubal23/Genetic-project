@@ -9,6 +9,10 @@ import json
 import os
 import numpy as np
 
+# En producción, Railway inyecta ALLOWED_ORIGINS con el dominio de Vercel.
+# En local, permite http://localhost:3000 por defecto.
+ORIGENES_PERMITIDOS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -38,10 +42,9 @@ from genetic_algorithm import (
     NUM_ELITE,
     MAX_GENERACIONES,
     DELTA_TOLERANCIA,
-    MAX_CIRCULOS,
 )
 
-# ── Configuración de la aplicación ───────────────────────────────────────────
+#  Configuración de la aplicación 
 
 aplicacion = FastAPI(
     title="CircleGA API",
@@ -51,13 +54,13 @@ aplicacion = FastAPI(
 
 aplicacion.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=ORIGENES_PERMITIDOS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
+#  Endpoints 
 
 @aplicacion.get("/health")
 def verificar_estado():
@@ -134,13 +137,12 @@ async def detectar_circulos(
         max_generaciones  = int(parametros.get("max_generations",  MAX_GENERACIONES)),
     )
 
-    delta        = float(parametros.get("delta",        DELTA_TOLERANCIA))
-    max_circulos = int(parametros.get("max_circulos",   MAX_CIRCULOS))
+    delta = float(parametros.get("delta", DELTA_TOLERANCIA))
 
     # 5. Ejecutar el algoritmo genético
     resultado_ga = detector.detectar(
         puntos_borde, imagen_original.shape,
-        delta=delta, max_circulos=max_circulos
+        delta=delta,
     )
 
     circulos_detectados = resultado_ga["circulos"]

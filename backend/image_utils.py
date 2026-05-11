@@ -7,17 +7,13 @@ import cv2
 import numpy as np
 import base64
 
-# ── Constantes de preprocesamiento ──────────────────────────────────────────
+#  Constantes de preprocesamiento 
 KERNEL_DESENFOQUE = (5, 5)
 
-# Límite de puntos de borde que recibe el GA.
-# Con más de este número el fitness se diluye tanto que la selección
-# deja de discriminar: todos los individuos tienen aptitud ~0 sin importar
-# si forman un círculo real o no.
 MAX_PUNTOS_BORDE = 3000
 
 
-# ── Carga de imagen ──────────────────────────────────────────────────────────
+#  Carga de imagen 
 
 def cargar_imagen_desde_bytes(datos_imagen: bytes) -> np.ndarray:
     """
@@ -33,19 +29,11 @@ def cargar_imagen_desde_bytes(datos_imagen: bytes) -> np.ndarray:
     return imagen
 
 
-# ── Preprocesamiento ─────────────────────────────────────────────────────────
+#  Preprocesamiento 
 
 def preprocesar(imagen: np.ndarray) -> np.ndarray:
     """
     Detecta los bordes de la imagen usando el algoritmo Canny.
-
-    Canny produce bordes delgados (1 px) y bien conectados, lo que es
-    ideal para el GA: entrega menos puntos y de mejor calidad que Sobel.
-
-    El umbral se calcula automáticamente a partir de la mediana de la imagen
-    para adaptarse a distintas condiciones de iluminación y contraste.
-
-    Retorna un mapa binario donde los píxeles blancos (255) son bordes.
     """
     gris      = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
     suavizada = cv2.GaussianBlur(gris, KERNEL_DESENFOQUE, 1)
@@ -67,11 +55,6 @@ def preprocesar(imagen: np.ndarray) -> np.ndarray:
 def obtener_puntos_borde(mapa_bordes: np.ndarray) -> np.ndarray:
     """
     Extrae las coordenadas (x, y) de todos los píxeles de borde.
-
-    Si el número de puntos supera MAX_PUNTOS_BORDE, toma una muestra
-    aleatoria uniforme. Esto mantiene el fitness en un rango útil (>5%)
-    sin sacrificar la representación espacial del borde.
-
     Retorna un array de forma (N, 2) con columnas [x, y].
     """
     filas, columnas = np.where(mapa_bordes > 0)
@@ -84,7 +67,7 @@ def obtener_puntos_borde(mapa_bordes: np.ndarray) -> np.ndarray:
     return puntos_borde
 
 
-# ── Anotación y exportación ──────────────────────────────────────────────────
+#  Anotación y exportación 
 
 def anotar_imagen(imagen: np.ndarray, circulos: list) -> np.ndarray:
     """

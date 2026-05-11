@@ -45,7 +45,8 @@ export default function Home() {
     fd.append("params", JSON.stringify(params));
 
     try {
-      const res = await fetch("http://localhost:8000/detect", { method: "POST", body: fd });
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/detect`, { method: "POST", body: fd });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail ?? "Error desconocido");
@@ -80,11 +81,22 @@ export default function Home() {
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-mono)" }}>
             Evolución computacional aplicada a visión artificial &nbsp;·&nbsp; Ayala-Ramírez et al.,{" "}
             <em>Pattern Recognition Letters</em> 27 (2006) 652–657
+            &nbsp;·&nbsp;{" "}
+            <a
+              href="https://www.researchgate.net/publication/269338225_Circle_detection_on_images_based_on_the_Clonal_Selection_Algorithm_CSA"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "rgba(255,255,255,0.5)", textDecoration: "none", borderBottom: "1px solid rgba(255,255,255,0.2)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.85)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+            >
+              ver investigación →
+            </a>
           </p>
         </div>
 
-        {/* ── Two-column layout ── */}
-        <div id="demo" className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* ── Two-column layout — centrado verticalmente ── */}
+        <div id="demo" className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
 
           {/* Left — Terminal */}
           <div className="anim-up" style={{ animationDelay: "0.2s" }}>
@@ -123,16 +135,16 @@ export default function Home() {
               }}
               onMouseEnter={(e) => {
                 if (!file || loading) return;
-                e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+                e.currentTarget.style.background  = "rgba(255,255,255,0.08)";
                 e.currentTarget.style.borderColor = "rgba(255,255,255,0.6)";
               }}
               onMouseLeave={(e) => {
                 if (!file || loading) return;
-                e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                e.currentTarget.style.background  = "rgba(255,255,255,0.04)";
                 e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)";
               }}
             >
-              {loading ? "ejecutando…" : "ejecutar GA"}
+              {loading ? "Ejecutando…" : "Ejecutar GA"}
             </button>
           </div>
         </div>
@@ -161,16 +173,30 @@ export default function Home() {
 
         {/* ── Footer ── */}
         <footer className="mt-20 pt-8" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.18)", fontFamily: "var(--font-mono)" }}>
-              CircleGA · implementación académica
+          <div className="flex flex-wrap items-start justify-between gap-6">
+
+            {/* Info académica */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>
+                Algoritmos y Complejidad · 5° Semestre
+              </div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "var(--font-mono)" }}>
+                Universidad del Norte · Prof. Esmeide Leal Narvaez
+              </div>
             </div>
+
+            {/* Integrantes */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {["Dubal Aguilar Torres", "Carlos Calabria Patiño", "Alejandro Chaves Ramos", "Santiago Solorzano Diaz"].map((n) => (
+                <div key={n} style={{ fontSize: 10, color: "rgba(255,255,255,0.18)", fontFamily: "var(--font-mono)" }}>{n}</div>
+              ))}
+            </div>
+
+            {/* Stack */}
             <div style={{ fontSize: 10, color: "rgba(255,255,255,0.12)", fontFamily: "var(--font-mono)" }}>
               Python · FastAPI · OpenCV · Next.js 14 · Tailwind CSS
             </div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.12)", fontFamily: "var(--font-mono)" }}>
-              Ayala-Ramírez, García-Capulín, Pérez-García &amp; Sanchez-Yanez · 2006
-            </div>
+
           </div>
         </footer>
       </main>

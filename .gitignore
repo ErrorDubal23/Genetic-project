@@ -8,5 +8,9 @@ frontend/.next/
 frontend/node_modules/
 frontend/out/
 
+# Env — nunca subir al repo
+frontend/.env.local
+frontend/.env*.local
+
 # OS
 .DS_Store

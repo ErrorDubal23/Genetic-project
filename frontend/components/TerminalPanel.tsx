@@ -9,15 +9,17 @@ const ARCHIVOS = [
   "main.py",
 ];
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ── Resaltado de sintaxis Python (tokenizador propio) ────────────────────────
 function resaltarPython(codigoOriginal: string): string {
   const fragmentos: string[] = [];
 
-  // Marca única que no aparece en código Python
-  const marcar  = (html: string) => { fragmentos.push(html); return `\x00${fragmentos.length - 1}\x00`; };
-  const restaurar = (t: string)  => t.replace(/\x00(\d+)\x00/g, (_, i) => fragmentos[+i]);
+  // Marca con letras alrededor del índice: \x00FNF\x00
+  // Así la regex de números (\b\d+\b) no captura el índice N
+  // porque está rodeado de la letra F (carácter de palabra), eliminando \b.
+  const marcar    = (html: string) => { fragmentos.push(html); return `\x00F${fragmentos.length - 1}F\x00`; };
+  const restaurar = (t: string)    => t.replace(/\x00F(\d+)F\x00/g, (_, i) => fragmentos[+i]);
 
   // 1. Escapar caracteres HTML del código fuente original
   let texto = codigoOriginal
@@ -26,9 +28,14 @@ function resaltarPython(codigoOriginal: string): string {
     .replace(/>/g, "&gt;");
 
   // 2. Extraer docstrings (triple comillas) → color de comentario
-  texto = texto.replace(/"""[\s\S]*?"""|'''[\s\S]*?'''/g,
-    (m) => marcar(`<span class="sh-cm">${m}</span>`)
-  );
+  // Cada línea recibe su propio span para que al dividir por \n no queden spans rotos.
+  texto = texto.replace(/"""[\s\S]*?"""|'''[\s\S]*?'''/g, (m) => {
+    const spanPorLinea = m
+      .split("\n")
+      .map((parte) => `<span class="sh-cm">${parte}</span>`)
+      .join("\n");
+    return marcar(spanPorLinea);
+  });
 
   // 3. Extraer strings de una sola línea
   texto = texto.replace(/"[^"\n]*"|'[^'\n]*'/g,
@@ -175,6 +182,9 @@ export default function TerminalPanel({
     if (codeRef.current) codeRef.current.scrollTop = 0;
   }, []);
 
+  // Líneas del archivo activo ya con HTML resaltado
+  const lineasCodigo = (codigos[active] ?? "").split("\n");
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div
@@ -247,7 +257,7 @@ export default function TerminalPanel({
       <div
         ref={codeRef}
         className="overflow-auto"
-        style={{ minHeight: 220, maxHeight: 300, padding: "16px" }}
+        style={{ minHeight: 220, maxHeight: 300 }}
       >
         {cargando ? (
           <div className="flex items-center gap-2 py-8 justify-center" style={{ color: "rgba(255,255,255,0.2)" }}>
@@ -258,15 +268,34 @@ export default function TerminalPanel({
             <span style={{ fontSize: 10 }}>cargando código…</span>
           </div>
         ) : errorRed ? (
-          <div style={{ color: "rgba(255,100,100,0.6)", fontSize: 10, padding: "8px 0" }}>
+          <div style={{ color: "rgba(255,100,100,0.6)", fontSize: 10, padding: "8px 16px" }}>
             no se pudo conectar al backend para cargar el código
           </div>
         ) : (
-          <pre
-            className="leading-relaxed whitespace-pre"
-            style={{ fontSize: 11, color: "#d4d4d4" }}
-            dangerouslySetInnerHTML={{ __html: codigos[active] ?? "" }}
-          />
+          <div style={{ paddingTop: 16, paddingBottom: 16, fontSize: 11, lineHeight: 1.625 }}>
+            {lineasCodigo.map((linea, i) => (
+              <div key={i} style={{ display: "flex", whiteSpace: "pre" }}>
+                {/* Número de línea — mismo elemento que su código */}
+                <span style={{
+                  minWidth: 48,
+                  paddingLeft: 16,
+                  paddingRight: 10,
+                  textAlign: "right",
+                  userSelect: "none",
+                  color: "rgba(255,255,255,0.2)",
+                  flexShrink: 0,
+                  borderRight: "1px solid rgba(255,255,255,0.05)",
+                }}>
+                  {i + 1}
+                </span>
+                {/* Código de esa línea */}
+                <span
+                  style={{ paddingLeft: 12, paddingRight: 16, color: "#d4d4d4", flex: 1 }}
+                  dangerouslySetInnerHTML={{ __html: linea || "&nbsp;" }}
+                />
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

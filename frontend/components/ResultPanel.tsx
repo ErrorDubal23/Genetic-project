@@ -160,30 +160,32 @@ export default function ResultPanel({ result, error, loading }: Props) {
       {/* Download */}
       <button
         onClick={download}
-        className="w-full flex items-center justify-center gap-2 transition-all duration-200 py-3"
+        className="w-full flex items-center justify-center gap-2 transition-all duration-200 py-3.5"
         style={{
-          borderTop: "1px solid rgba(255,255,255,0.05)",
-          background: "transparent",
-          fontSize: 11,
-          color: "rgba(255,255,255,0.3)",
-          fontFamily: "var(--font-mono)",
+          borderTop: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.03)",
+          fontSize: 12,
+          fontWeight: 500,
+          color: "rgba(255,255,255,0.55)",
+          fontFamily: "var(--font-sans)",
           cursor: "pointer",
+          letterSpacing: "0.03em",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.color   = "rgba(255,255,255,0.85)";
-          e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+          e.currentTarget.style.color      = "rgba(255,255,255,0.95)";
+          e.currentTarget.style.background = "rgba(255,255,255,0.07)";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.color   = "rgba(255,255,255,0.3)";
-          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color      = "rgba(255,255,255,0.55)";
+          e.currentTarget.style.background = "rgba(255,255,255,0.03)";
         }}
       >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
           <polyline points="7 10 12 15 17 10" />
           <line x1="12" y1="15" x2="12" y2="3" />
         </svg>
-        descargar imagen anotada
+        Descargar imagen anotada
       </button>
     </div>
   );

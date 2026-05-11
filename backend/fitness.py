@@ -1,39 +1,24 @@
 """
 Función de aptitud para el algoritmo genético de detección de círculos.
 
-Basada en: Ayala-Ramírez et al. (2006), Sección 3.
+Implementación fiel a: Ayala-Ramírez et al. (2006), Secciones 2.2 y 2.3.
 Pattern Recognition Letters 27, pp. 652-657.
-
-NOTA SOBRE EL DISEÑO DE LA FUNCIÓN DE APTITUD
-──────────────────────────────────────────────
-El paper original divide por el total de puntos de borde:
-    aptitud = puntos_cercanos / total_puntos
-
-Esto funciona bien en imágenes simples, pero en fotos reales con muchos
-bordes el fitness del círculo correcto puede caer a 0.5% – 2%, haciendo
-que el GA no tenga señal suficiente para distinguir buenas soluciones.
-
-Usamos en cambio la "cobertura del perímetro":
-    aptitud = puntos_cercanos / circunferencia_esperada
-
-Esto mide qué fracción del círculo candidato está respaldada por bordes
-reales, independientemente de cuántos bordes haya en el resto de la imagen.
-Un círculo perfecto obtiene aptitud ≈ 1.0; uno parcial, proporcional.
 """
 
+import math
 import numpy as np
 
-# ── Constantes de validación ─────────────────────────────────────────────────
-RADIO_MINIMO        = 10     # Círculos menores no son relevantes (px)
-COBERTURA_MINIMA    = 0.10   # Al menos 10% del perímetro debe tener bordes cerca
-UMBRAL_COLINEALIDAD = 1e-10  # Determinante mínimo para que no sean colineales
+# ── Constantes ───────────────────────────────────────────────────────────────
+RADIO_MINIMO        = 10     # r* en ecuación 9: umbral de penalización (px)
+UMBRAL_COLINEALIDAD = 1e-10  # Determinante mínimo para que los 3 puntos no sean colineales
 
 
-# ── Geometría: círculo por 3 puntos ─────────────────────────────────────────
+# ── Geometría: círculo que pasa por 3 puntos ─────────────────────────────────
 
 def circulo_desde_tres_puntos(punto_a, punto_b, punto_c):
     """
     Calcula el único círculo que pasa exactamente por tres puntos.
+    Ecuaciones (2), (3) y (4) del paper.
     Retorna (centro_x, centro_y, radio) o None si los puntos son colineales.
     """
     x1, y1 = punto_a
@@ -43,7 +28,7 @@ def circulo_desde_tres_puntos(punto_a, punto_b, punto_c):
     denominador = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
 
     if abs(denominador) < UMBRAL_COLINEALIDAD:
-        return None  # Puntos colineales: no existe un único círculo
+        return None  # Los 3 puntos son colineales: no existe un círculo único
 
     suma_cuad_1 = x1 ** 2 + y1 ** 2
     suma_cuad_2 = x2 ** 2 + y2 ** 2
@@ -61,32 +46,50 @@ def circulo_desde_tres_puntos(punto_a, punto_b, punto_c):
         suma_cuad_3 * (x2 - x1)
     ) / denominador
 
-    radio = np.sqrt((x1 - centro_x) ** 2 + (y1 - centro_y) ** 2)
+    radio = math.sqrt((x1 - centro_x) ** 2 + (y1 - centro_y) ** 2)
 
     return centro_x, centro_y, radio
 
 
-# ── Función de aptitud ───────────────────────────────────────────────────────
+#  Rejilla de bordes dilatada 
 
-def evaluar_aptitud(individuo: np.ndarray, puntos_borde: np.ndarray,
-                    forma_imagen: tuple, delta: float = 2.0) -> float:
+def construir_rejilla_bordes(puntos_borde, forma_imagen, delta):
     """
-    Calcula la aptitud de un individuo midiendo la cobertura del perímetro.
+    Construye una rejilla booleana donde rejilla[y, x] = True significa
+    que hay algún píxel de borde a distancia <= delta de la posición (x, y).
 
-    Fórmula:
-        aptitud = puntos_cercanos_al_circulo / circunferencia_del_circulo
+    Esto implementa la función E(xi, yi) del paper en O(1) por consulta.
+    Se calcula UNA SOLA VEZ antes de las generaciones del GA, no en cada
+    evaluación individual.
 
-    Donde circunferencia = 2π × radio (en píxeles).
+    Algoritmo:
+        Para cada desplazamiento (dx, dy) dentro del disco de radio delta,
+        se desplazan todos los puntos de borde y se marcan en la rejilla.
+        Así se "dilata" el borde por delta píxeles en todas direcciones.
+    """
+    alto, ancho = forma_imagen[:2]
+    rejilla     = np.zeros((alto, ancho), dtype=bool)
+    margen      = int(delta)
 
-    Un círculo perfecto con todos sus bordes detectados obtiene aptitud ≈ 1.0.
-    Un círculo parcialmente visible obtiene una fracción proporcional.
+    xs_borde = np.round(puntos_borde[:, 0]).astype(int)
+    ys_borde = np.round(puntos_borde[:, 1]).astype(int)
 
-    Parámetros:
-        individuo    : array con 3 índices enteros (apuntan a puntos_borde)
-        puntos_borde : array (N, 2) con coordenadas [x, y] de bordes
-        forma_imagen : tupla (alto, ancho, ...) de la imagen original
-        delta        : tolerancia en píxeles — cuánto puede alejarse un punto
-                       del perímetro para seguir contando como "en el círculo"
+    for dx in range(-margen, margen + 1):
+        for dy in range(-margen, margen + 1):
+            if dx * dx + dy * dy <= delta * delta:
+                xs = np.clip(xs_borde + dx, 0, ancho - 1)
+                ys = np.clip(ys_borde + dy, 0, alto  - 1)
+                rejilla[ys, xs] = True
+
+    return rejilla
+
+
+#  Función de aptitud (ecuación 8 del paper) 
+
+def evaluar_aptitud(individuo, puntos_borde, rejilla_bordes, forma_imagen,
+                    delta=2.0):
+    """
+    Calcula F(C) según la ecuación (8) de Ayala-Ramírez et al. (2006).
     """
     indice_1, indice_2, indice_3 = individuo
 
@@ -102,27 +105,33 @@ def evaluar_aptitud(individuo: np.ndarray, puntos_borde: np.ndarray,
     centro_x, centro_y, radio = resultado
     alto, ancho = forma_imagen[:2]
 
-    # Filtrar círculos con tamaño o posición inválidos
+    # Verificar que el círculo tenga tamaño y posición razonables
     radio_maximo = min(alto, ancho) / 2
-    if radio < RADIO_MINIMO or radio > radio_maximo:
+    if radio > radio_maximo:
         return 0.0
     if not (0 <= centro_x < ancho and 0 <= centro_y < alto):
         return 0.0
 
-    # Contar puntos de borde cercanos al perímetro del círculo
-    distancia_al_centro   = np.sqrt(
-        (puntos_borde[:, 0] - centro_x) ** 2 +
-        (puntos_borde[:, 1] - centro_y) ** 2
+    # Ns = número de puntos de muestra = longitud del perímetro en píxeles
+    Ns = max(8, int(2 * math.pi * radio))
+
+    # Generar Ns ángulos uniformes y calcular sus coordenadas (ec. 6 y 7)
+    angulos  = 2 * math.pi * np.arange(Ns) / Ns
+    xi_muestra = np.clip(
+        np.round(centro_x + radio * np.cos(angulos)).astype(int), 0, ancho - 1
     )
-    distancia_al_perimetro    = np.abs(distancia_al_centro - radio)
-    puntos_sobre_el_circulo   = np.sum(distancia_al_perimetro <= delta)
+    yi_muestra = np.clip(
+        np.round(centro_y + radio * np.sin(angulos)).astype(int), 0, alto  - 1
+    )
 
-    # Cobertura: fracción del perímetro respaldada por puntos de borde
-    circunferencia = 2 * np.pi * radio
-    cobertura      = puntos_sobre_el_circulo / circunferencia
+    # Contar cuántos puntos de muestra tienen borde cercano: Σ E(xi, yi)
+    puntos_con_borde = int(np.sum(rejilla_bordes[yi_muestra, xi_muestra]))
 
-    # Descartar si no hay evidencia suficiente de un círculo real
-    if cobertura < COBERTURA_MINIMA:
-        return 0.0
+    # F(C) = Σ E(xi, yi) / Ns  (ecuación 8)
+    aptitud = puntos_con_borde / Ns
 
-    return float(min(cobertura, 1.0))
+    # Penalización para radios pequeños (ecuación 9): f(r) = r/r* si r < r*
+    if radio < RADIO_MINIMO:
+        aptitud = aptitud * (radio / RADIO_MINIMO)
+
+    return float(aptitud)

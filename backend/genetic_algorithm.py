@@ -5,20 +5,12 @@ Implementación basada en:
   Ayala-Ramírez V., García-Capulín C.H., Pérez-García A., Sanchez-Yanez R.E.
   "Circle detection on images using genetic algorithms"
   Pattern Recognition Letters 27 (2006), pp. 652-657.
-
-Mejoras aplicadas sobre el esquema original:
-  - Inicialización con separación mínima entre los 3 puntos (evita individuos
-    degenerados donde los 3 puntos son casi el mismo).
-  - Mutación sin índices duplicados dentro de un individuo.
-  - Multi-arranque: el GA corre NUMERO_REINICIOS veces con poblaciones
-    frescas y se conserva el mejor resultado global. Esto divide las
-    generaciones entre los reinicios pero aumenta mucho la diversidad.
 """
 
 import numpy as np
-from fitness import evaluar_aptitud, circulo_desde_tres_puntos
+from fitness import evaluar_aptitud, circulo_desde_tres_puntos, construir_rejilla_bordes
 
-# ── Valores por defecto del paper ────────────────────────────────────────────
+# Valores por defecto del paper 
 TAMANIO_POBLACION  = 70     # Número de individuos
 PROB_CRUCE         = 0.55   # Probabilidad de cruce entre pares
 PROB_MUTACION      = 0.10   # Probabilidad de mutar un individuo
@@ -31,19 +23,18 @@ NUMERO_REINICIOS           = 3    # Cuántas veces se reinicia el GA desde cero
 INTENTOS_INICIALIZACION    = 8    # Intentos para encontrar 3 puntos bien separados
 DISTANCIA_MINIMA_PUNTOS    = 15   # Separación mínima (px) entre los 3 puntos
 
-MAX_CIRCULOS               = 1    # Número máximo de círculos a detectar por defecto
-APTITUD_MINIMA_SIGUIENTE   = 0.12 # Si el siguiente círculo tiene menos aptitud, se para
-MARGEN_SUPRESION           = 5    # Multiplicador de delta para eliminar puntos ya usados
+APTITUD_MINIMA_ACEPTABLE   = 0.20 # Aptitud mínima para aceptar un círculo como real
+MARGEN_SUPRESION           = 8    # Multiplicador de delta para eliminar puntos ya usados
+MAX_CIRCULOS_POSIBLES      = 20   # Límite de seguridad para evitar bucles infinitos
+MINIMOS_PUNTOS_RESTANTES   = 50   # Mínimo de puntos para intentar otra detección
+UMBRAL_SIMILITUD_CIRCULOS  = 20   # Distancia (px) para considerar dos círculos iguales
 
 
-# ── Clase principal ──────────────────────────────────────────────────────────
+#  Clase principal 
 
 class DetectorCirculosGA:
     """
     Detecta el mejor círculo en una imagen usando un algoritmo genético.
-
-    Cada individuo de la población representa un círculo candidato,
-    codificado como 3 índices de puntos del mapa de bordes de la imagen.
     """
 
     def __init__(
@@ -60,7 +51,7 @@ class DetectorCirculosGA:
         self.num_elite         = num_elite
         self.max_generaciones  = max_generaciones
 
-    # ── Inicialización ────────────────────────────────────────────────────────
+    #  Inicialización 
 
     def _separacion_minima(self, indices: np.ndarray,
                            puntos_borde: np.ndarray) -> float:
@@ -103,18 +94,19 @@ class DetectorCirculosGA:
 
         return poblacion
 
-    # ── Evaluación ────────────────────────────────────────────────────────────
+    #  Evaluación 
 
     def _evaluar_poblacion(self, poblacion: np.ndarray, puntos_borde: np.ndarray,
+                           rejilla_bordes: np.ndarray,
                            forma_imagen: tuple, delta: float) -> np.ndarray:
         """Calcula la aptitud de cada individuo de la población."""
         aptitudes = [
-            evaluar_aptitud(individuo, puntos_borde, forma_imagen, delta)
+            evaluar_aptitud(individuo, puntos_borde, rejilla_bordes, forma_imagen, delta)
             for individuo in poblacion
         ]
         return np.array(aptitudes)
 
-    # ── Selección ─────────────────────────────────────────────────────────────
+    #  Selección 
 
     def _seleccion_ruleta(self, poblacion: np.ndarray,
                           aptitudes: np.ndarray) -> np.ndarray:
@@ -138,7 +130,7 @@ class DetectorCirculosGA:
         )
         return poblacion[indices_seleccionados]
 
-    # ── Cruce ─────────────────────────────────────────────────────────────────
+    #  Cruce 
 
     def _cruce_un_punto(self, poblacion: np.ndarray) -> np.ndarray:
         """
@@ -158,7 +150,7 @@ class DetectorCirculosGA:
 
         return descendencia
 
-    # ── Mutación ──────────────────────────────────────────────────────────────
+    #  Mutación 
 
     def _mutar(self, poblacion: np.ndarray, num_puntos_borde: int) -> np.ndarray:
         """
@@ -183,10 +175,10 @@ class DetectorCirculosGA:
 
         return poblacion
 
-    # ── Ciclo de una ejecución ────────────────────────────────────────────────
+    #  Ciclo de una ejecución 
 
-    def _ejecutar_una_vez(self, puntos_borde: np.ndarray, forma_imagen: tuple,
-                          delta: float, num_generaciones: int):
+    def _ejecutar_una_vez(self, puntos_borde: np.ndarray, rejilla_bordes: np.ndarray,
+                          forma_imagen: tuple, delta: float, num_generaciones: int):
         """
         Ejecuta UNA pasada completa del GA y retorna el mejor individuo
         encontrado junto con su aptitud.
@@ -197,7 +189,7 @@ class DetectorCirculosGA:
         mejor_apt     = -1.0
 
         for _ in range(num_generaciones):
-            aptitudes       = self._evaluar_poblacion(poblacion, puntos_borde, forma_imagen, delta)
+            aptitudes       = self._evaluar_poblacion(poblacion, puntos_borde, rejilla_bordes, forma_imagen, delta)
             elite           = poblacion[np.argsort(aptitudes)[-self.num_elite:]].copy()
             aptitudes_elite = np.sort(aptitudes)[-self.num_elite:]
 
@@ -227,12 +219,16 @@ class DetectorCirculosGA:
         """
         generaciones_por_reinicio = max(1, self.max_generaciones // NUMERO_REINICIOS)
 
+        # La rejilla se construye UNA vez para este conjunto de puntos y se
+        # reutiliza en todos los reinicios: O(N·delta²) en lugar de O(Ns·N) por evaluación.
+        rejilla_bordes = construir_rejilla_bordes(puntos_borde, forma_imagen, delta)
+
         mejor_individuo_global = None
         mejor_aptitud_global   = -1.0
 
         for _ in range(NUMERO_REINICIOS):
             mejor_ind, mejor_apt = self._ejecutar_una_vez(
-                puntos_borde, forma_imagen, delta, generaciones_por_reinicio
+                puntos_borde, rejilla_bordes, forma_imagen, delta, generaciones_por_reinicio
             )
             if mejor_apt > mejor_aptitud_global:
                 mejor_aptitud_global   = mejor_apt
@@ -258,25 +254,37 @@ class DetectorCirculosGA:
         }
         return circulo, round(float(mejor_aptitud_global), 4)
 
-    # ── Ciclo principal con detección secuencial ──────────────────────────────
+    #  Verificación de duplicados 
+
+    def _es_duplicado(self, circulo_nuevo: dict, circulos_encontrados: list) -> bool:
+        """
+        Comprueba si el círculo nuevo es demasiado similar a alguno ya encontrado.
+        Evita que una supresión imperfecta vuelva a detectar el mismo círculo.
+        """
+        cx = circulo_nuevo["x"]
+        cy = circulo_nuevo["y"]
+        r  = circulo_nuevo["r"]
+
+        for c in circulos_encontrados:
+            dist_centros = ((cx - c["x"]) ** 2 + (cy - c["y"]) ** 2) ** 0.5
+            diff_radio   = abs(r - c["r"])
+            if dist_centros < UMBRAL_SIMILITUD_CIRCULOS and diff_radio < UMBRAL_SIMILITUD_CIRCULOS:
+                return True
+        return False
+
+    #  Ciclo principal con detección secuencial 
 
     def detectar(self, puntos_borde: np.ndarray, forma_imagen: tuple,
-                 delta: float = DELTA_TOLERANCIA,
-                 max_circulos: int = MAX_CIRCULOS) -> dict:
+                 delta: float = DELTA_TOLERANCIA) -> dict:
         """
-        Detecta hasta max_circulos círculos usando supresión secuencial.
+        Detecta todos los círculos presentes en la imagen usando supresión secuencial.
 
         Algoritmo:
           1. Buscar el mejor círculo en los puntos disponibles.
-          2. Eliminar los puntos de borde cercanos a ese círculo.
-          3. Repetir con los puntos restantes hasta llegar a max_circulos
-             o hasta que la aptitud del siguiente caiga por debajo del umbral.
-
-        Parámetros:
-            puntos_borde : array (N, 2) con coordenadas de píxeles de borde
-            forma_imagen : tupla (alto, ancho, canales) de la imagen
-            delta        : tolerancia en píxeles (~2 px según el paper)
-            max_circulos : número máximo de círculos a detectar
+          2. Si su aptitud está por debajo del umbral mínimo, parar.
+          3. Si es casi igual a uno ya encontrado, parar.
+          4. Eliminar los puntos de borde cercanos a ese círculo.
+          5. Repetir con los puntos restantes.
         """
         if len(puntos_borde) < GENES_POR_INDIVIDUO:
             return {"circulos": [], "mejor_aptitud": 0.0}
@@ -285,23 +293,26 @@ class DetectorCirculosGA:
         aptitudes_encontradas = []
         puntos_disponibles    = puntos_borde.copy()
 
-        for _ in range(max_circulos):
-            if len(puntos_disponibles) < GENES_POR_INDIVIDUO:
+        while len(circulos_encontrados) < MAX_CIRCULOS_POSIBLES:
+            if len(puntos_disponibles) < MINIMOS_PUNTOS_RESTANTES:
                 break
 
             circulo, aptitud = self._buscar_mejor_circulo(
                 puntos_disponibles, forma_imagen, delta
             )
 
-            # Si la aptitud es demasiado baja, no vale la pena seguir
-            if circulo is None or aptitud < APTITUD_MINIMA_SIGUIENTE:
+            # Parar si no hay evidencia suficiente de un círculo real
+            if circulo is None or aptitud < APTITUD_MINIMA_ACEPTABLE:
+                break
+
+            # Parar si es casi igual a un círculo que ya encontramos
+            if self._es_duplicado(circulo, circulos_encontrados):
                 break
 
             circulos_encontrados.append(circulo)
             aptitudes_encontradas.append(aptitud)
 
             # Suprimir puntos cercanos al círculo recién detectado
-            # para que la siguiente pasada no vuelva a encontrar el mismo
             cx, cy, r = circulo["x"], circulo["y"], circulo["r"]
             dist_al_centro    = np.sqrt(
                 (puntos_disponibles[:, 0] - cx) ** 2 +

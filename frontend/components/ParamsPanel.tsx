@@ -7,7 +7,6 @@ export interface GAParams {
   elite_count:     number;
   max_generations: number;
   delta:           number;
-  max_circulos:    number;
 }
 
 export const DEFAULT_PARAMS: GAParams = {
@@ -17,7 +16,6 @@ export const DEFAULT_PARAMS: GAParams = {
   elite_count:     2,
   max_generations: 500,
   delta:           2.0,
-  max_circulos:    1,
 };
 
 interface FieldDef {
@@ -35,7 +33,6 @@ const FIELDS: FieldDef[] = [
   { key: "elite_count",      label: "Élite",         min: 0,   max: 10,   step: 1,    hint: "paper: 2" },
   { key: "max_generations",  label: "Generaciones",  min: 10,  max: 2000, step: 10,   hint: "paper: 500" },
   { key: "delta",            label: "Tolerancia δ",  min: 0.5, max: 10,   step: 0.5,  hint: "~2 px" },
-  { key: "max_circulos",    label: "Círculos máx.", min: 1,   max: 10,   step: 1,    hint: "1" },
 ];
 
 interface Props {
@@ -69,20 +66,30 @@ export default function ParamsPanel({ params, onChange, disabled = false }: Prop
           onClick={() => onChange(DEFAULT_PARAMS)}
           disabled={disabled}
           style={{
-            fontSize: 10,
-            color: "rgba(255,255,255,0.2)",
+            fontSize: 11,
+            color: "rgba(255,255,255,0.45)",
             fontFamily: "var(--font-mono)",
-            background: "none",
-            border: "none",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.1)",
             cursor: disabled ? "not-allowed" : "pointer",
-            padding: "2px 6px",
-            borderRadius: 4,
-            transition: "color 0.2s",
+            padding: "3px 10px",
+            borderRadius: 6,
+            transition: "all 0.2s",
           }}
-          onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.2)"; }}
+          onMouseEnter={(e) => {
+            if (!disabled) {
+              e.currentTarget.style.color       = "rgba(255,255,255,0.9)";
+              e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)";
+              e.currentTarget.style.background  = "rgba(255,255,255,0.08)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color       = "rgba(255,255,255,0.45)";
+            e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+            e.currentTarget.style.background  = "rgba(255,255,255,0.04)";
+          }}
         >
-          ↺ restaurar
+          ↺ Restaurar
         </button>
       </div>
 
@@ -115,6 +122,7 @@ export default function ParamsPanel({ params, onChange, disabled = false }: Prop
               disabled={disabled}
               onChange={(e) => set(key, parseFloat(e.target.value))}
               className="w-full"
+              style={{ cursor: disabled ? "not-allowed" : "pointer" }}
             />
 
             {/* Value — editable */}
