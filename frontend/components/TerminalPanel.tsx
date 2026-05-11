@@ -442,22 +442,15 @@ export default function TerminalPanel({
       {/* ── Modal expandido ── */}
       {modalAbierto && (
         <div
-          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-          onClick={(e) => { if (e.target === e.currentTarget) setModalAbierto(false); }}
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "#0c0c0c",
+            display: "flex", flexDirection: "column",
+            overflow: "hidden",
+            fontFamily: "var(--font-mono)",
+          }}
         >
-          <div
-            style={{
-              background: "#0c0c0c",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 14,
-              width: "100%", maxWidth: 1100,
-              height: "92vh",
-              display: "flex", flexDirection: "column",
-              overflow: "hidden",
-              fontFamily: "var(--font-mono)",
-              boxShadow: "0 32px 80px rgba(0,0,0,0.7)",
-            }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
             {/* Barra de título del modal */}
             <div
               className="flex items-center gap-2 px-4 py-3 shrink-0"
