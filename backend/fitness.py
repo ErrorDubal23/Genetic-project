@@ -8,12 +8,12 @@ Pattern Recognition Letters 27, pp. 652-657.
 import math
 import numpy as np
 
-# ── Constantes ───────────────────────────────────────────────────────────────
+#  Constantes 
 RADIO_MINIMO        = 10     # r* en ecuación 9: umbral de penalización (px)
 UMBRAL_COLINEALIDAD = 1e-10  # Determinante mínimo para que los 3 puntos no sean colineales
 
 
-# ── Geometría: círculo que pasa por 3 puntos ─────────────────────────────────
+#  Geometría: círculo que pasa por 3 puntos 
 
 def circulo_desde_tres_puntos(punto_a, punto_b, punto_c):
     """
