@@ -80,7 +80,7 @@ export default function Header() {
             CircleGA
           </div>
           <div className="hidden sm:block text-[10px]" style={{ color: "rgba(255,255,255,0.22)", fontFamily: "var(--font-mono)" }}>
-            genetic · vision
+            genetico · circulos · GA
           </div>
         </motion.div>
 
