@@ -76,7 +76,7 @@ export default function Header() {
           whileHover={{ scale: 1.02 }}
           transition={{ type: "spring", stiffness: 400, damping: 20 }}
         >
-          <div className="text-[17px] font-bold tracking-wide" style={{ fontFamily: "var(--font-sans)", color: "rgba(255,255,255,0.9)" }}>
+          <div className="text-[21px] font-bold tracking-wide" style={{ fontFamily: "var(--font-sans)", color: "rgba(255,255,255,0.9)" }}>
             CircleGA
           </div>
           <div className="hidden sm:block text-[10px]" style={{ color: "rgba(255,255,255,0.22)", fontFamily: "var(--font-mono)" }}>
@@ -91,7 +91,7 @@ export default function Header() {
               key={label}
               href={href}
               {...(ext ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-              className="px-3 py-1.5 text-xs rounded flex items-center gap-1.5"
+              className="px-4 py-2 text-sm rounded flex items-center gap-2"
               style={{ color: "rgba(255,255,255,0.32)", fontFamily: "var(--font-sans)" }}
               whileHover={{ color: "rgba(255,255,255,0.9)", backgroundColor: "rgba(255,255,255,0.05)" }}
               transition={{ duration: 0.15 }}
@@ -111,7 +111,7 @@ export default function Header() {
           <div ref={equipoRef} className="relative">
             <motion.button
               onClick={() => setMostrarEquipo((v) => !v)}
-              className="px-3 py-1.5 text-xs rounded flex items-center gap-1.5"
+              className="px-4 py-2 text-sm rounded flex items-center gap-2"
               style={{
                 color: mostrarEquipo ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.32)",
                 background: mostrarEquipo ? "rgba(255,255,255,0.05)" : "none",
