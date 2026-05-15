@@ -8,35 +8,51 @@ Implementación basada en:
 """
 
 import numpy as np
-from fitness import evaluar_aptitud, circulo_desde_tres_puntos, construir_rejilla_bordes
+from fitness import (
+    evaluar_aptitud,
+    circulo_desde_tres_puntos,
+    construir_rejilla_bordes,
+    verificar_continuidad_circulo,
+    FRACCION_SECTORES_MINIMA,
+    MIN_SECTORES_CONSECUTIVOS,
+    MAX_ARCOS_SEPARADOS,
+)
 
-# Valores por defecto del paper 
+# ── Parámetros del GA (Tabla 1 del paper) ────────────────────────────────────
 TAMANIO_POBLACION  = 70     # Número de individuos
-PROB_CRUCE         = 0.55   # Probabilidad de cruce entre pares
-PROB_MUTACION      = 0.10   # Probabilidad de mutar un individuo
+PROB_CRUCE         = 0.55   # Probabilidad de cruce de un punto
+PROB_MUTACION      = 0.10   # Probabilidad de mutar un bit
 NUM_ELITE          = 2      # Individuos élite que pasan sin cambios
 MAX_GENERACIONES   = 500    # Generaciones totales (repartidas entre reinicios)
-DELTA_TOLERANCIA   = 2.0    # Tolerancia en píxeles
+DELTA_TOLERANCIA   = 2.0    # Tolerancia en píxeles para la rejilla de bordes
 
-GENES_POR_INDIVIDUO        = 3    # Cada individuo = 3 índices de puntos de borde
-NUMERO_REINICIOS           = 3    # Cuántas veces se reinicia el GA desde cero
-INTENTOS_INICIALIZACION    = 8    # Intentos para encontrar 3 puntos bien separados
-DISTANCIA_MINIMA_PUNTOS    = 15   # Separación mínima (px) entre los 3 puntos
+# ── Parámetros de búsqueda ────────────────────────────────────────────────────
+GENES_POR_INDIVIDUO     = 3   # Cromosoma = 3 índices de puntos de borde
+NUMERO_REINICIOS        = 5   # Multi-arranque: cuántas veces se reinicia el GA
+INTENTOS_INICIALIZACION = 8   # Intentos para sembrar individuos bien repartidos
+DISTANCIA_MINIMA_PUNTOS = 20  # Separación mínima (px) entre los 3 puntos semilla
 
-APTITUD_MINIMA_PRIMER       = 0.20 # Aptitud mínima absoluta para el primer círculo
-FRACCION_APTITUD_MINIMA     = 0.30 # Los siguientes deben tener al menos el 30% del primero
-MARGEN_SUPRESION            = 8    # Multiplicador de delta para eliminar puntos ya usados
-MAX_CIRCULOS_POSIBLES       = 20   # Límite de seguridad para evitar bucles infinitos
-MINIMOS_PUNTOS_RESTANTES    = 50   # Mínimo de puntos para intentar otra detección
-UMBRAL_DUPLICADO_CENTRO     = 10   # Diferencia máxima de centro (px) para considerar duplicado
-UMBRAL_DUPLICADO_RADIO      = 15   # Diferencia máxima de radio (px) para considerar duplicado
+# ── Umbrales de aceptación ────────────────────────────────────────────────────
+APTITUD_MINIMA_PRIMER    = 0.38  # Aptitud mínima — aplica a TODOS los círculos
+APTITUD_MINIMA_RESTO     = 0.42  # Umbral absoluto para los círculos 2, 3, 4…
+                                 # Fijo e independiente del primer círculo, evita que
+                                 # variaciones de calidad entre círculos (p.ej. uno con
+                                 # borde blanco visible y otro sin él) afecten la detección.
+FRACCION_APTITUD_MINIMA  = 0.50  # Respaldo relativo: si el primero fue excepcionalmente bueno
 
+# ── Supresión y límites ───────────────────────────────────────────────────────
+MARGEN_SUPRESION         = 8    # Multiplicador de delta para el radio de enmascarado
+MAX_CIRCULOS_POSIBLES    = 20   # Tope de seguridad del bucle
+MINIMOS_PUNTOS_RESTANTES = 50   # Mínimo de puntos para seguir buscando
+UMBRAL_DUPLICADO_CENTRO  = 10   # Distancia máxima entre centros para ser duplicado (px)
+UMBRAL_DUPLICADO_RADIO   = 15   # Diferencia máxima de radio para ser duplicado (px)
 
-#  Clase principal 
 
 class DetectorCirculosGA:
     """
-    Detecta el mejor círculo en una imagen usando un algoritmo genético.
+    Detecta círculos en una imagen usando un Algoritmo Genético.
+    Cada individuo codifica tres índices de puntos de borde; el círculo
+    que pasa por esos tres puntos es el candidato evaluado.
     """
 
     def __init__(
@@ -53,14 +69,10 @@ class DetectorCirculosGA:
         self.num_elite         = num_elite
         self.max_generaciones  = max_generaciones
 
-    #  Inicialización 
+    # ── Inicialización ────────────────────────────────────────────────────────
 
     def _separacion_minima(self, indices: np.ndarray,
                            puntos_borde: np.ndarray) -> float:
-        """
-        Calcula la distancia mínima entre los 3 puntos de un individuo.
-        Valores más altos indican que los puntos están bien repartidos.
-        """
         p1, p2, p3 = puntos_borde[indices]
         d12 = float(np.sqrt(np.sum((p1 - p2) ** 2)))
         d13 = float(np.sqrt(np.sum((p1 - p3) ** 2)))
@@ -70,223 +82,217 @@ class DetectorCirculosGA:
     def _inicializar_poblacion(self, num_puntos: int,
                                puntos_borde: np.ndarray) -> np.ndarray:
         """
-        Crea la población inicial.
-
-        Para cada individuo se generan INTENTOS_INICIALIZACION candidatos
-        aleatorios (sin índices repetidos) y se conserva el que tiene
-        mayor separación entre sus 3 puntos.
-
-        Puntos bien separados forman círculos más estables y reducen los
-        casos degenerados donde los 3 puntos son casi colineales.
+        Crea la población inicial favoreciendo individuos cuyos 3 puntos
+        estén bien separados entre sí (círculos más estables).
         """
         poblacion = np.zeros((self.tamanio_poblacion, GENES_POR_INDIVIDUO), dtype=int)
 
         for i in range(self.tamanio_poblacion):
-            mejor_individuo = np.random.choice(num_puntos, GENES_POR_INDIVIDUO, replace=False)
-            mejor_separacion = self._separacion_minima(mejor_individuo, puntos_borde)
+            mejor = np.random.choice(num_puntos, GENES_POR_INDIVIDUO, replace=False)
+            mejor_sep = self._separacion_minima(mejor, puntos_borde)
 
             for _ in range(INTENTOS_INICIALIZACION):
-                candidato   = np.random.choice(num_puntos, GENES_POR_INDIVIDUO, replace=False)
-                separacion  = self._separacion_minima(candidato, puntos_borde)
-                if separacion > mejor_separacion:
-                    mejor_individuo  = candidato
-                    mejor_separacion = separacion
+                candidato = np.random.choice(num_puntos, GENES_POR_INDIVIDUO, replace=False)
+                sep = self._separacion_minima(candidato, puntos_borde)
+                if sep > mejor_sep:
+                    mejor     = candidato
+                    mejor_sep = sep
 
-            poblacion[i] = mejor_individuo
+            poblacion[i] = mejor
 
         return poblacion
 
-    #  Evaluación 
+    # ── Evaluación ────────────────────────────────────────────────────────────
 
     def _evaluar_poblacion(self, poblacion: np.ndarray, puntos_borde: np.ndarray,
                            rejilla_bordes: np.ndarray,
                            forma_imagen: tuple, delta: float) -> np.ndarray:
-        """Calcula la aptitud de cada individuo de la población."""
         aptitudes = [
-            evaluar_aptitud(individuo, puntos_borde, rejilla_bordes, forma_imagen, delta)
-            for individuo in poblacion
+            evaluar_aptitud(ind, puntos_borde, rejilla_bordes, forma_imagen, delta)
+            for ind in poblacion
         ]
         return np.array(aptitudes)
 
-    #  Selección 
+    # ── Selección (ruleta) ────────────────────────────────────────────────────
 
     def _seleccion_ruleta(self, poblacion: np.ndarray,
                           aptitudes: np.ndarray) -> np.ndarray:
-        """
-        Selección proporcional a la aptitud (ruleta).
-        Los individuos con mayor aptitud tienen mayor probabilidad de ser elegidos.
-        Referencia: Sección 4.3 del paper.
-        """
-        suma_total = aptitudes.sum()
-
-        if suma_total == 0:
-            probabilidades = np.ones(self.tamanio_poblacion) / self.tamanio_poblacion
+        """Selección proporcional a la aptitud (sección 2.4 del paper)."""
+        suma = aptitudes.sum()
+        if suma == 0:
+            probs = np.ones(self.tamanio_poblacion) / self.tamanio_poblacion
         else:
-            probabilidades = aptitudes / suma_total
+            probs = aptitudes / suma
 
-        indices_seleccionados = np.random.choice(
-            self.tamanio_poblacion,
-            size=self.tamanio_poblacion,
-            replace=True,
-            p=probabilidades
-        )
-        return poblacion[indices_seleccionados]
+        indices = np.random.choice(self.tamanio_poblacion,
+                                   size=self.tamanio_poblacion,
+                                   replace=True, p=probs)
+        return poblacion[indices]
 
-    #  Cruce 
+    # ── Cruce de un punto ─────────────────────────────────────────────────────
 
     def _cruce_un_punto(self, poblacion: np.ndarray) -> np.ndarray:
-        """
-        Cruce de un punto entre pares consecutivos.
-        Con probabilidad prob_cruce se intercambian los genes a la derecha
-        del punto de corte.
-        Referencia: Sección 4.4 del paper.
-        """
+        """Cruce de un punto entre pares consecutivos (sección 2.4 del paper)."""
         descendencia = poblacion.copy()
-
         for i in range(0, self.tamanio_poblacion - 1, 2):
             if np.random.rand() < self.prob_cruce:
-                punto_de_corte = np.random.randint(1, GENES_POR_INDIVIDUO)
-                genes_temp                           = poblacion[i, punto_de_corte:].copy()
-                descendencia[i,     punto_de_corte:] = poblacion[i + 1, punto_de_corte:]
-                descendencia[i + 1, punto_de_corte:] = genes_temp
-
+                corte = np.random.randint(1, GENES_POR_INDIVIDUO)
+                tmp                            = poblacion[i,     corte:].copy()
+                descendencia[i,     corte:]    = poblacion[i + 1, corte:]
+                descendencia[i + 1, corte:]    = tmp
         return descendencia
 
-    #  Mutación 
+    # ── Mutación ──────────────────────────────────────────────────────────────
 
-    def _mutar(self, poblacion: np.ndarray, num_puntos_borde: int) -> np.ndarray:
-        """
-        Mutación: reemplaza un gen por un nuevo índice aleatorio.
-
-        Garantiza que el individuo mutado no tenga índices duplicados,
-        lo que evitaría calcular un círculo con dos puntos idénticos.
-        Referencia: Sección 4.5 del paper.
-        """
+    def _mutar(self, poblacion: np.ndarray, num_puntos: int) -> np.ndarray:
+        """Mutación por reemplazo de un índice aleatorio (sección 2.4 del paper)."""
         for i in range(self.tamanio_poblacion):
             if np.random.rand() < self.prob_mutacion:
-                gen_a_mutar  = np.random.randint(GENES_POR_INDIVIDUO)
-                otros_indices = set(poblacion[i]) - {int(poblacion[i, gen_a_mutar])}
-
-                nuevo_indice = np.random.randint(num_puntos_borde)
-                intentos     = 0
-                while nuevo_indice in otros_indices and intentos < 15:
-                    nuevo_indice = np.random.randint(num_puntos_borde)
-                    intentos    += 1
-
-                poblacion[i, gen_a_mutar] = nuevo_indice
-
+                gen = np.random.randint(GENES_POR_INDIVIDUO)
+                otros = set(poblacion[i]) - {int(poblacion[i, gen])}
+                nuevo = np.random.randint(num_puntos)
+                intentos = 0
+                while nuevo in otros and intentos < 15:
+                    nuevo    = np.random.randint(num_puntos)
+                    intentos += 1
+                poblacion[i, gen] = nuevo
         return poblacion
 
-    #  Ciclo de una ejecución 
+    # ── Ciclo de una ejecución ────────────────────────────────────────────────
 
-    def _ejecutar_una_vez(self, puntos_borde: np.ndarray, rejilla_bordes: np.ndarray,
-                          forma_imagen: tuple, delta: float, num_generaciones: int):
-        """
-        Ejecuta UNA pasada completa del GA y retorna el mejor individuo
-        encontrado junto con su aptitud.
-        """
-        num_puntos    = len(puntos_borde)
-        poblacion     = self._inicializar_poblacion(num_puntos, puntos_borde)
-        mejor_ind     = None
-        mejor_apt     = -1.0
+    def _ejecutar_una_vez(self, puntos_borde: np.ndarray,
+                          rejilla_bordes: np.ndarray,
+                          forma_imagen: tuple, delta: float,
+                          num_generaciones: int):
+        num_puntos = len(puntos_borde)
+        poblacion  = self._inicializar_poblacion(num_puntos, puntos_borde)
+        mejor_ind  = None
+        mejor_apt  = -1.0
 
         for _ in range(num_generaciones):
-            aptitudes       = self._evaluar_poblacion(poblacion, puntos_borde, rejilla_bordes, forma_imagen, delta)
-            elite           = poblacion[np.argsort(aptitudes)[-self.num_elite:]].copy()
-            aptitudes_elite = np.sort(aptitudes)[-self.num_elite:]
+            aptitudes = self._evaluar_poblacion(
+                poblacion, puntos_borde, rejilla_bordes, forma_imagen, delta
+            )
+            orden      = np.argsort(aptitudes)
+            elite      = poblacion[orden[-self.num_elite:]].copy()
+            apt_elite  = aptitudes[orden[-self.num_elite:]]
 
-            aptitud_mejor_generacion = float(aptitudes_elite[-1])
-            if aptitud_mejor_generacion > mejor_apt:
-                mejor_apt = aptitud_mejor_generacion
+            if float(apt_elite[-1]) > mejor_apt:
+                mejor_apt = float(apt_elite[-1])
                 mejor_ind = elite[-1].copy()
 
             seleccionados = self._seleccion_ruleta(poblacion, aptitudes)
             descendencia  = self._cruce_un_punto(seleccionados)
             descendencia  = self._mutar(descendencia, num_puntos)
-
-            # Elitismo: los mejores de la generación anterior sobreviven
             descendencia[:self.num_elite] = elite
-
             poblacion = descendencia
 
         return mejor_ind, mejor_apt
 
-    # ── Buscar el mejor círculo en un conjunto de puntos ─────────────────────
+    # ── Búsqueda del mejor círculo en un conjunto de puntos ──────────────────
 
-    def _buscar_mejor_circulo(self, puntos_borde: np.ndarray, forma_imagen: tuple,
-                              delta: float):
+    def _buscar_mejor_circulo(self, puntos_borde: np.ndarray,
+                               forma_imagen: tuple, delta: float):
         """
-        Ejecuta el GA con multi-arranque sobre los puntos dados y retorna
-        el mejor individuo encontrado y su aptitud.
+        Ejecuta el GA con multi-arranque y retorna el mejor círculo encontrado
+        junto con su aptitud y la rejilla de bordes (reutilizable para validación).
         """
         generaciones_por_reinicio = max(1, self.max_generaciones // NUMERO_REINICIOS)
-
-        # La rejilla se construye UNA vez para este conjunto de puntos y se
-        # reutiliza en todos los reinicios: O(N·delta²) en lugar de O(Ns·N) por evaluación.
         rejilla_bordes = construir_rejilla_bordes(puntos_borde, forma_imagen, delta)
 
-        mejor_individuo_global = None
-        mejor_aptitud_global   = -1.0
+        mejor_ind_global = None
+        mejor_apt_global = -1.0
 
         for _ in range(NUMERO_REINICIOS):
             mejor_ind, mejor_apt = self._ejecutar_una_vez(
-                puntos_borde, rejilla_bordes, forma_imagen, delta, generaciones_por_reinicio
+                puntos_borde, rejilla_bordes, forma_imagen, delta,
+                generaciones_por_reinicio
             )
-            if mejor_apt > mejor_aptitud_global:
-                mejor_aptitud_global   = mejor_apt
-                mejor_individuo_global = mejor_ind
+            if mejor_apt > mejor_apt_global:
+                mejor_apt_global = mejor_apt
+                mejor_ind_global = mejor_ind
 
-        # Convertir el mejor individuo a coordenadas de círculo
-        if mejor_individuo_global is None or mejor_aptitud_global <= 0:
-            return None, mejor_aptitud_global
+        if mejor_ind_global is None or mejor_apt_global <= 0:
+            return None, mejor_apt_global, rejilla_bordes
 
-        p1 = puntos_borde[mejor_individuo_global[0]]
-        p2 = puntos_borde[mejor_individuo_global[1]]
-        p3 = puntos_borde[mejor_individuo_global[2]]
+        p1 = puntos_borde[mejor_ind_global[0]]
+        p2 = puntos_borde[mejor_ind_global[1]]
+        p3 = puntos_borde[mejor_ind_global[2]]
 
-        resultado_circulo = circulo_desde_tres_puntos(p1, p2, p3)
-        if resultado_circulo is None:
-            return None, mejor_aptitud_global
+        resultado = circulo_desde_tres_puntos(p1, p2, p3)
+        if resultado is None:
+            return None, mejor_apt_global, rejilla_bordes
 
-        centro_x, centro_y, radio = resultado_circulo
+        cx, cy, r = resultado
         circulo = {
-            "x": round(float(centro_x), 2),
-            "y": round(float(centro_y), 2),
-            "r": round(float(radio),    2),
+            "x": round(float(cx), 2),
+            "y": round(float(cy), 2),
+            "r": round(float(r),  2),
         }
-        return circulo, round(float(mejor_aptitud_global), 4)
+        return circulo, round(float(mejor_apt_global), 4), rejilla_bordes
 
-    #  Verificación de duplicados 
+    # ── Validación de continuidad (sección 3.4 del paper) ────────────────────
 
-    def _es_duplicado(self, circulo_nuevo: dict, circulos_encontrados: list) -> bool:
+    def _validar_circulo(self, circulo: dict, rejilla_bordes: np.ndarray,
+                          forma_imagen: tuple) -> bool:
         """
-        Comprueba si el círculo nuevo es demasiado similar a alguno ya encontrado.
-        Evita que una supresión imperfecta vuelva a detectar el mismo círculo.
+        Verifica que el borde que soporta al círculo sea un arco real y no
+        el resultado accidental de aristas rectas de polígonos.
+
+        Tres criterios complementarios:
+          1. fraccion_sectores >= 0.30  — suficiente cobertura global
+          2. max_consecutivos  >= 4     — arco continuo de al menos 120°
+          3. numero_arcos      <= 2     — no más de 2 segmentos de arco separados
+
+        Un círculo real (incluso con oclusión significativa) cumple los tres.
+        Un fantasma de polígono falla al menos uno: las aristas rectas solo
+        cruzan la circunferencia en 2 puntos por arista, creando arcos muy
+        cortos y dispersos.
+
+        Referencia: Kelly y Levine (1997), citado en sección 3.4 del paper.
         """
+        fraccion, max_cons, num_arcos = verificar_continuidad_circulo(
+            circulo["x"], circulo["y"], circulo["r"],
+            rejilla_bordes, forma_imagen
+        )
+        return (fraccion    >= FRACCION_SECTORES_MINIMA
+                and max_cons >= MIN_SECTORES_CONSECUTIVOS
+                and num_arcos <= MAX_ARCOS_SEPARADOS)
+
+    # ── Verificación de duplicados ────────────────────────────────────────────
+
+    def _es_duplicado(self, circulo_nuevo: dict,
+                       circulos_encontrados: list) -> bool:
         cx = circulo_nuevo["x"]
         cy = circulo_nuevo["y"]
         r  = circulo_nuevo["r"]
-
         for c in circulos_encontrados:
-            dist_centros = ((cx - c["x"]) ** 2 + (cy - c["y"]) ** 2) ** 0.5
-            diff_radio   = abs(r - c["r"])
-            if dist_centros < UMBRAL_DUPLICADO_CENTRO and diff_radio < UMBRAL_DUPLICADO_RADIO:
+            dist  = ((cx - c["x"]) ** 2 + (cy - c["y"]) ** 2) ** 0.5
+            dradio = abs(r - c["r"])
+            if dist < UMBRAL_DUPLICADO_CENTRO and dradio < UMBRAL_DUPLICADO_RADIO:
                 return True
         return False
 
-    #  Ciclo principal con detección secuencial 
+    # ── Bucle de detección secuencial (sección 3.4 del paper) ────────────────
 
     def detectar(self, puntos_borde: np.ndarray, forma_imagen: tuple,
                  delta: float = DELTA_TOLERANCIA) -> dict:
         """
-        Detecta todos los círculos presentes en la imagen usando supresión secuencial.
+        Detecta todos los círculos de la imagen usando supresión secuencial.
 
-        Algoritmo:
-          1. Buscar el mejor círculo en los puntos disponibles.
-          2. Si su aptitud está por debajo del umbral mínimo, parar.
-          3. Si es casi igual a uno ya encontrado, parar.
-          4. Eliminar los puntos de borde cercanos a ese círculo.
+        Algoritmo fiel al paper (sección 3.4):
+          1. Ejecutar el GA sobre los puntos disponibles → mejor candidato C.
+          2. Si la aptitud de C no supera el umbral mínimo → parar.
+          3. Validar la continuidad del arco de C:
+             si falla → el mejor candidato posible no es un círculo real → parar.
+          4. Enmascarar la región del círculo aceptado en el mapa de bordes.
           5. Repetir con los puntos restantes.
+
+        Nota sobre el 'break' en la validación:
+          Si el GA —con multi-arranque y 500 generaciones— produce como mejor
+          candidato un círculo que no pasa la validación, significa que ya no
+          quedan círculos reales en los puntos disponibles. Continuar buscando
+          solo generaría falsos positivos progresivamente peores.
         """
         if len(puntos_borde) < GENES_POR_INDIVIDUO:
             return {"circulos": [], "mejor_aptitud": 0.0}
@@ -294,48 +300,64 @@ class DetectorCirculosGA:
         circulos_encontrados  = []
         aptitudes_encontradas = []
         puntos_disponibles    = puntos_borde.copy()
-        aptitud_referencia    = None   # aptitud del primer círculo encontrado
+        aptitud_referencia    = None
 
         while len(circulos_encontrados) < MAX_CIRCULOS_POSIBLES:
             if len(puntos_disponibles) < MINIMOS_PUNTOS_RESTANTES:
                 break
 
-            circulo, aptitud = self._buscar_mejor_circulo(
+            circulo, aptitud, rejilla_actual = self._buscar_mejor_circulo(
                 puntos_disponibles, forma_imagen, delta
             )
 
             if circulo is None:
                 break
 
-            # Primer círculo: umbral absoluto para asegurar calidad mínima
-            if aptitud_referencia is None:
-                if aptitud < APTITUD_MINIMA_PRIMER:
-                    break
-                aptitud_referencia = aptitud
-            else:
-                # Círculos siguientes: umbral relativo al primero (adapta a la imagen)
-                if aptitud < aptitud_referencia * FRACCION_APTITUD_MINIMA:
+            # Umbral absoluto: si incluso el mejor candidato es muy débil, no hay círculos
+            if aptitud < APTITUD_MINIMA_PRIMER:
+                break
+
+            # Para el 2º círculo en adelante: usar el mayor entre el umbral absoluto
+            # (APTITUD_MINIMA_RESTO) y el relativo (FRACCION × primero).
+            # El absoluto protege cuando los círculos tienen distinta calidad de borde
+            # (p.ej. uno con trazo blanco visible y otro sin él).
+            if aptitud_referencia is not None:
+                umbral = max(APTITUD_MINIMA_RESTO,
+                             aptitud_referencia * FRACCION_APTITUD_MINIMA)
+                if aptitud < umbral:
                     break
 
-            # Parar si es casi igual a un círculo que ya encontramos
+            # Validación de continuidad (sección 3.4 del paper)
+            # Si el mejor candidato falla → no hay más círculos reales → parar
+            if not self._validar_circulo(circulo, rejilla_actual, forma_imagen):
+                break
+
+            # Ignorar si es casi idéntico a uno ya encontrado
             if self._es_duplicado(circulo, circulos_encontrados):
                 break
+
+            # Registrar la aptitud de referencia con el primer círculo aceptado
+            if aptitud_referencia is None:
+                aptitud_referencia = aptitud
 
             circulos_encontrados.append(circulo)
             aptitudes_encontradas.append(aptitud)
 
-            # Enmascarar el disco completo del círculo detectado.
-            # El paper (sección 3.4) dice: "This shape is then masked on the
-            # edge image". La fórmula anterior solo quitaba la banda del
-            # perímetro, dejando el interior intacto y permitiendo que la
-            # textura interna generara círculos fantasma.
+            # Enmascarar el ANILLO del perímetro del círculo detectado.
+            # "This shape is then masked on the edge image" (sección 3.4 del paper).
+            #
+            # Usamos máscara de anillo (|dist - r| > margen) en lugar de disco completo
+            # para preservar los bordes de círculos adyacentes que podrían solaparse con
+            # el disco. Con máscara de disco se eliminan puntos del borde del siguiente
+            # círculo cuando los círculos están cerca o tocándose, reduciendo su aptitud.
+            # La máscara de anillo solo elimina los píxeles del borde ya encontrado.
             cx, cy, r = circulo["x"], circulo["y"], circulo["r"]
-            dist_al_centro = np.sqrt(
+            dist = np.sqrt(
                 (puntos_disponibles[:, 0] - cx) ** 2 +
                 (puntos_disponibles[:, 1] - cy) ** 2
             )
-            mascara_lejanos    = dist_al_centro > r + delta * MARGEN_SUPRESION
-            puntos_disponibles = puntos_disponibles[mascara_lejanos]
+            fuera_anillo   = np.abs(dist - r) > delta * MARGEN_SUPRESION
+            puntos_disponibles = puntos_disponibles[fuera_anillo]
 
         mejor_aptitud_global = aptitudes_encontradas[0] if aptitudes_encontradas else 0.0
 

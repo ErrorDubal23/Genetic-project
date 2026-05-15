@@ -1,19 +1,25 @@
 """
 Utilidades para carga y procesamiento de imágenes.
-Incluye detección de bordes con Canny y submuestreo de puntos.
+Incluye detección de bordes con Canny y supresión de segmentos rectos.
 """
 
 import cv2
 import numpy as np
 import base64
 
-#  Constantes de preprocesamiento 
-KERNEL_DESENFOQUE = (7, 7)   # Kernel más amplio para suavizar textura interna
+#  Constantes de preprocesamiento
+KERNEL_DESENFOQUE    = (5, 5)   # Desenfoque gaussiano para reducir ruido
+MAX_PUNTOS_BORDE     = 3000     # Límite de puntos de borde para no sobrecargar el GA
 
-MAX_PUNTOS_BORDE = 3000
+# Parámetros para la supresión de líneas rectas (Transformada de Hough Probabilística)
+LONGITUD_MINIMA_LINEA = 60    # Longitud mínima (px) de un segmento para considerarlo línea recta
+                              # Con 60px, los arcos de círculos grandes ya no se detectan como líneas
+UMBRAL_HOUGH          = 40    # Votos mínimos en espacio de Hough para detectar una línea
+BRECHA_MAXIMA_LINEA   = 8     # Separación máxima (px) para unir dos segmentos colineales
+GROSOR_MASCARA_LINEA  = 3     # Ancho (px) del trazo borrador sobre las líneas detectadas
 
 
-#  Carga de imagen 
+#  Carga de imagen
 
 def cargar_imagen_desde_bytes(datos_imagen: bytes) -> np.ndarray:
     """
@@ -29,26 +35,68 @@ def cargar_imagen_desde_bytes(datos_imagen: bytes) -> np.ndarray:
     return imagen
 
 
-#  Preprocesamiento 
+#  Supresión de segmentos de línea recta
+
+def suprimir_lineas_rectas(mapa_bordes: np.ndarray) -> np.ndarray:
+    """
+    Detecta segmentos de línea recta con la Transformada de Hough Probabilística
+    y borra sus píxeles del mapa de bordes.
+
+    Los arcos de círculos son curvos: sus píxeles votan en muchos ángulos distintos
+    del espacio de Hough y nunca acumulan suficientes votos en un solo bin para ser
+    detectados como líneas rectas. Las aristas de polígonos sí lo hacen.
+
+    Esto permite que el GA reciba un mapa de bordes con features predominantemente
+    circulares, eliminando la principal fuente de falsos positivos.
+    """
+    lineas = cv2.HoughLinesP(
+        mapa_bordes,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=UMBRAL_HOUGH,
+        minLineLength=LONGITUD_MINIMA_LINEA,
+        maxLineGap=BRECHA_MAXIMA_LINEA,
+    )
+
+    if lineas is None:
+        return mapa_bordes
+
+    mascara = np.zeros_like(mapa_bordes)
+    for linea in lineas:
+        x1, y1, x2, y2 = linea[0]
+        cv2.line(mascara, (x1, y1), (x2, y2), 255, GROSOR_MASCARA_LINEA)
+
+    return cv2.bitwise_and(mapa_bordes, cv2.bitwise_not(mascara))
+
+
+#  Preprocesamiento
 
 def preprocesar(imagen: np.ndarray) -> np.ndarray:
     """
-    Detecta los bordes de la imagen usando el algoritmo Canny.
+    Prepara la imagen para el GA:
+      1. Convierte a escala de grises.
+      2. Aplica desenfoque gaussiano para reducir ruido de textura.
+      3. Detecta bordes con Canny (umbrales adaptativos basados en la mediana).
+      4. Suprime segmentos de línea recta para que el GA vea principalmente
+         arcos circulares y no aristas de polígonos.
     """
     gris      = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
     suavizada = cv2.GaussianBlur(gris, KERNEL_DESENFOQUE, 2)
 
-    # Umbral automático basado en la mediana del histograma
+    # Umbrales adaptativos basados en la mediana del histograma
     mediana     = float(np.median(suavizada))
     umbral_bajo = max(0,   int(0.67 * mediana))
     umbral_alto = min(255, int(1.33 * mediana))
 
-    # Garantizar un mínimo de contraste en los umbrales
     if umbral_alto - umbral_bajo < 20:
         umbral_bajo = 30
         umbral_alto = 100
 
     mapa_bordes = cv2.Canny(suavizada, umbral_bajo, umbral_alto)
+
+    # Eliminar aristas rectas de polígonos para reducir falsos positivos en el GA
+    mapa_bordes = suprimir_lineas_rectas(mapa_bordes)
+
     return mapa_bordes
 
 
@@ -67,12 +115,11 @@ def obtener_puntos_borde(mapa_bordes: np.ndarray) -> np.ndarray:
     return puntos_borde
 
 
-#  Anotación y exportación 
+#  Anotación y exportación
 
 def anotar_imagen(imagen: np.ndarray, circulos: list) -> np.ndarray:
     """
     Dibuja cada círculo detectado sobre una copia de la imagen original.
-    Marca el contorno del círculo y un punto en su centro.
     """
     imagen_anotada = imagen.copy()
 
