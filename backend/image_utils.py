@@ -1,6 +1,6 @@
 """
-Utilidades para carga y procesamiento de imágenes.
-Incluye detección de bordes con Canny y supresión de segmentos rectos.
+Aquí están todas las funciones que preparan la imagen antes de pasársela
+al algoritmo genético, y las que dibujan y exportan el resultado final.
 """
 
 import math
@@ -8,21 +8,23 @@ import cv2
 import numpy as np
 import base64
 
-#  Constantes de preprocesamiento
-KERNEL_DESENFOQUE    = (5, 5)   # Desenfoque gaussiano para reducir ruido
-MAX_PUNTOS_BORDE     = 3000     # Límite de puntos de borde para no sobrecargar el GA
+# ── Configuración general ─────────────────────────────────────────────────────
+KERNEL_DESENFOQUE    = (5, 5)  # Tamaño del filtro de suavizado para reducir ruido
+MAX_PUNTOS_BORDE     = 3000    # Límite de puntos que le pasamos al GA para no hacerlo lento
 
-# Parámetros estáticos de la supresión PHT (los dinámicos se calculan por imagen)
-BRECHA_MAXIMA_LINEA  = 8   # Separación máxima (px) para unir segmentos colineales
-GROSOR_MASCARA_LINEA = 5   # Ancho (px) del borrador; cubre esquinas de polígonos
+# ── Configuración de la supresión de líneas rectas ────────────────────────────
+BRECHA_MAXIMA_LINEA  = 8  # Si dos trozos de línea recta están a menos de esto,
+                           # los tratamos como una sola línea (en píxeles)
+GROSOR_MASCARA_LINEA = 5  # Qué tan grueso es el borrador que usamos para tapar
+                           # las líneas detectadas. 5px asegura tapar también las esquinas.
 
 
-#  Carga de imagen
+# ── Cargar imagen ─────────────────────────────────────────────────────────────
 
 def cargar_imagen_desde_bytes(datos_imagen: bytes) -> np.ndarray:
     """
-    Convierte bytes de un archivo de imagen en un array NumPy (BGR).
-    Lanza ValueError si los datos no corresponden a una imagen válida.
+    Convierte los bytes del archivo subido en una imagen que podamos procesar.
+    Si el archivo no es una imagen válida, lanza un error explicando el problema.
     """
     arreglo_bytes = np.frombuffer(datos_imagen, np.uint8)
     imagen = cv2.imdecode(arreglo_bytes, cv2.IMREAD_COLOR)
@@ -33,29 +35,26 @@ def cargar_imagen_desde_bytes(datos_imagen: bytes) -> np.ndarray:
     return imagen
 
 
-#  Supresión de segmentos de línea recta (PHT adaptativo al tamaño de imagen)
+# ── Eliminar líneas rectas del mapa de bordes ─────────────────────────────────
 
 def suprimir_lineas_rectas(mapa_bordes: np.ndarray, forma_imagen: tuple) -> np.ndarray:
     """
-    Detecta segmentos de línea recta con la Transformada de Hough Probabilística
-    y borra sus píxeles del mapa de bordes.
+    Detecta y borra los segmentos de línea recta del mapa de bordes, para que
+    el GA solo vea bordes curvos (que son los que forman círculos).
 
-    La longitud mínima de línea se escala con la diagonal de la imagen (12%):
+    Los lados de triángulos, rectángulos y pentágonos son líneas rectas.
+    Los bordes de los círculos son curvos. Esta función elimina las líneas rectas
+    antes de que el GA las confunda con partes de un círculo.
 
-      • Imagen pequeña  (240×240, diag≈340 px)  → longitud_min ≈ 40 px
-        Los lados del pentágono de muestra (~53 px) quedan por encima y se suprimen.
-        Los arcos de círculos de r≥35 tienen saeta ≥4.7 px y no se confunden con líneas.
-
-      • Imagen grande (1440×780, diag≈1638 px)  → longitud_min ≈ 196 px
-        Los círculos con r≥150 que en imágenes grandes tienen arcos casi rectos
-        no se suprimen (saeta ≥16 px para el arco de esa longitud).
-
-    De esta forma el PHT elimina las aristas de polígonos sin dañar bordes circulares,
-    independientemente de la resolución de la imagen de entrada.
+    El umbral de longitud mínima se calcula automáticamente según el tamaño de
+    la imagen, porque en imágenes grandes los círculos también son grandes y
+    sus bordes parecen más rectos localmente. Si usáramos un umbral fijo,
+    eliminaríamos bordes de círculos grandes por error.
     """
     alto, ancho = forma_imagen[:2]
     diagonal    = math.sqrt(alto ** 2 + ancho ** 2)
 
+    # Líneas más cortas que esto no se consideran (escala con el tamaño de la imagen)
     longitud_min = max(40, int(diagonal * 0.12))
     umbral_votos = max(20, int(longitud_min * 0.55))
 
@@ -69,8 +68,9 @@ def suprimir_lineas_rectas(mapa_bordes: np.ndarray, forma_imagen: tuple) -> np.n
     )
 
     if lineas is None:
-        return mapa_bordes
+        return mapa_bordes  # No se encontraron líneas rectas, nada que borrar
 
+    # Dibujamos un "borrador" sobre cada línea detectada y lo aplicamos
     mascara = np.zeros_like(mapa_bordes)
     for linea in lineas:
         x1, y1, x2, y2 = linea[0]
@@ -79,34 +79,32 @@ def suprimir_lineas_rectas(mapa_bordes: np.ndarray, forma_imagen: tuple) -> np.n
     return cv2.bitwise_and(mapa_bordes, cv2.bitwise_not(mascara))
 
 
-#  Preprocesamiento
+# ── Preparar la imagen para el GA ────────────────────────────────────────────
 
 def preprocesar(imagen: np.ndarray) -> np.ndarray:
     """
-    Prepara la imagen para el GA:
-      1. Convierte a escala de grises.
-      2. Aplica desenfoque gaussiano para reducir ruido de textura.
-      3. Detecta bordes con Canny usando umbrales basados en la magnitud
-         del gradiente (no en la intensidad de píxeles).
-      4. Suprime segmentos de línea recta con PHT adaptativo al tamaño.
+    Transforma la imagen original en un mapa de bordes que el GA pueda usar.
 
-    Por qué se usa la magnitud del gradiente para los umbrales de Canny:
-      El enfoque previo (0.67 × mediana_píxel, 1.33 × mediana_píxel) falla en
-      imágenes con fondo claro (p. ej. círculos de colores sobre fondo blanco).
-      La mediana del píxel es ~230, lo que eleva el umbral bajo a ~154 y descarta
-      bordes de baja diferencia de color (círculo verde lima vs blanco: gradiente ≈85).
-      Usar percentiles de la magnitud del gradiente adapta los umbrales a las
-      intensidades de borde reales presentes en la imagen, sin importar el fondo.
+    Los pasos son:
+      1. Convertir a escala de grises (el GA no necesita color).
+      2. Suavizar para reducir el ruido de la textura.
+      3. Detectar los bordes con Canny.
+      4. Borrar las líneas rectas para que queden principalmente bordes curvos.
+
+    Los umbrales de Canny los calculamos a partir de la fuerza real de los bordes
+    en la imagen (no del brillo de los píxeles). Esto hace que funcione bien tanto
+    en imágenes oscuras como en imágenes con fondo blanco, donde los círculos de
+    colores claros tienen bordes más suaves que los oscuros.
     """
     gris      = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
     suavizada = cv2.GaussianBlur(gris, KERNEL_DESENFOQUE, 2)
 
-    # Calcular la magnitud del gradiente con Sobel
+    # Calculamos qué tan fuertes son los gradientes (cambios de color) en la imagen
     gx = cv2.Sobel(suavizada, cv2.CV_64F, 1, 0, ksize=3)
     gy = cv2.Sobel(suavizada, cv2.CV_64F, 0, 1, ksize=3)
     magnitud = np.hypot(gx, gy)
 
-    # Umbralización adaptativa basada en percentiles del gradiente
+    # Usamos los percentiles de esa fuerza para fijar los umbrales de Canny
     valores_grad = magnitud[magnitud > 0].ravel()
     if len(valores_grad) > 100:
         mediana_grad = float(np.median(valores_grad))
@@ -122,10 +120,13 @@ def preprocesar(imagen: np.ndarray) -> np.ndarray:
     return mapa_bordes
 
 
+# ── Extraer los puntos de borde ───────────────────────────────────────────────
+
 def obtener_puntos_borde(mapa_bordes: np.ndarray) -> np.ndarray:
     """
-    Extrae las coordenadas (x, y) de todos los píxeles de borde.
-    Retorna un array de forma (N, 2) con columnas [x, y].
+    Convierte el mapa de bordes en una lista de coordenadas (x, y).
+    Si hay demasiados puntos, tomamos una muestra aleatoria para que el GA
+    no se vuelva lento.
     """
     filas, columnas = np.where(mapa_bordes > 0)
     puntos_borde    = np.column_stack((columnas, filas)).astype(np.float64)
@@ -137,11 +138,11 @@ def obtener_puntos_borde(mapa_bordes: np.ndarray) -> np.ndarray:
     return puntos_borde
 
 
-#  Anotación y exportación
+# ── Dibujar los círculos detectados sobre la imagen ──────────────────────────
 
 def anotar_imagen(imagen: np.ndarray, circulos: list) -> np.ndarray:
     """
-    Dibuja cada círculo detectado sobre una copia de la imagen original.
+    Dibuja cada círculo detectado encima de la imagen original para visualizarlo.
     """
     imagen_anotada = imagen.copy()
 
@@ -156,9 +157,12 @@ def anotar_imagen(imagen: np.ndarray, circulos: list) -> np.ndarray:
     return imagen_anotada
 
 
+# ── Convertir la imagen a texto para enviarla al frontend ─────────────────────
+
 def imagen_a_base64(imagen: np.ndarray) -> str:
     """
-    Codifica un array NumPy (imagen) como cadena base64 en formato PNG.
+    Convierte la imagen a formato base64 para que el frontend pueda mostrarla
+    directamente sin necesidad de guardar un archivo.
     """
     _, buffer  = cv2.imencode(".png", imagen)
     cadena_b64 = base64.b64encode(buffer.tobytes()).decode()

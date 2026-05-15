@@ -1,40 +1,52 @@
 """
-Función de aptitud para el algoritmo genético de detección de círculos.
+Aquí está todo lo relacionado con evaluar qué tan "bueno" es un círculo candidato.
+El algoritmo genético usa estas funciones para saber si un individuo vale la pena
+o no, y al final para confirmar que lo que encontró es un círculo real.
 
-Implementación fiel a: Ayala-Ramírez et al. (2006), Secciones 2.2 y 2.3.
-Pattern Recognition Letters 27, pp. 652-657.
+Basado en: Ayala-Ramírez et al. (2006), secciones 2.2 y 2.3.
 """
 
 import math
 import numpy as np
 
-#  Constantes
-RADIO_MINIMO             = 10     # r* en ecuación 9: umbral de penalización (px)
-UMBRAL_COLINEALIDAD      = 1e-10  # Determinante mínimo para que los 3 puntos no sean colineales
-NUM_SECTORES_VALIDACION  = 18     # Sectores en que se divide la circunferencia (20° cada uno).
-                                  # Con 12 sectores (30°) los polígonos de 4-5 lados pasaban la
-                                  # fracción mínima: rectángulo 4/12=33%, pentágono 5/12=42%.
-                                  # Con 18 sectores esas fracciones caen a 22% y 28%,
-                                  # ambas por debajo del umbral 30% → rechazados automáticamente.
-FRACCION_SECTORES_MINIMA = 0.30   # Fracción mínima de sectores con borde (≥6/18 = 120° de cobertura)
-MIN_SECTORES_CONSECUTIVOS = 6     # Arco continuo mínimo requerido: 6 × 20° = 120°.
-                                  # (antes: 5 × 30° = 150° con 12 sectores)
-                                  # Requiere al menos 120° de arco continuo: círculos parcialmente
-                                  # ocluidos cumplen esto; vértices aislados de polígonos no.
-MAX_ARCOS_SEPARADOS      = 2      # Máximo de segmentos de arco discontinuos permitidos.
-                                  # Un círculo real (incluso ocluido) tiene 1-2 arcos continuos.
-                                  # Un fantasma de polígonos tiene 3+ arcos dispersos, uno por
-                                  # cada arista que casualmente cruza la circunferencia.
-PUNTOS_POR_SECTOR        = 5      # Puntos de muestreo por sector en la verificación de continuidad
+# ── Valores de configuración ──────────────────────────────────────────────────
+
+RADIO_MINIMO              = 10   # Si un círculo es más pequeño que esto (en píxeles),
+                                  # le bajamos la nota. Evita detectar puntitos de ruido.
+
+UMBRAL_COLINEALIDAD       = 1e-10 # Si los 3 puntos están casi en línea recta,
+                                  # no se puede calcular un círculo único, así que lo ignoramos.
+
+NUM_SECTORES_VALIDACION   = 18   # Para validar un círculo, lo dividimos en 18 partes iguales
+                                  # (como las tajadas de una naranja, de 20° cada una).
+                                  # Con 12 partes, los rectángulos y pentágonos se confundían
+                                  # con círculos. Con 18, eso ya no pasa.
+
+FRACCION_SECTORES_MINIMA  = 0.30 # Al menos el 30% de las 18 partes deben tener borde
+                                  # para que aceptemos el círculo. Esto equivale a tener
+                                  # unos 120° de circunferencia cubiertos como mínimo.
+
+MIN_SECTORES_CONSECUTIVOS = 6    # Esas partes con borde deben estar juntas, formando
+                                  # un arco continuo de al menos 6 partes seguidas (120°).
+                                  # Un círculo real siempre tiene eso, aunque esté tapado.
+                                  # Los vértices de un polígono no lo logran.
+
+MAX_ARCOS_SEPARADOS       = 2    # El borde encontrado puede estar partido en máximo 2
+                                  # pedazos separados (por ejemplo, si algo tapa parte
+                                  # del círculo). Si hay 3 o más pedazos dispersos,
+                                  # probablemente son los lados de un polígono, no un círculo.
+
+PUNTOS_POR_SECTOR         = 5    # Cuántos puntos revisamos dentro de cada parte
+                                  # al verificar si tiene borde.
 
 
-#  Geometría: círculo que pasa por 3 puntos 
+# ── Calcular el círculo que pasa por 3 puntos ────────────────────────────────
 
 def circulo_desde_tres_puntos(punto_a, punto_b, punto_c):
     """
-    Calcula el único círculo que pasa exactamente por tres puntos.
-    Ecuaciones (2), (3) y (4) del paper.
-    Retorna (centro_x, centro_y, radio) o None si los puntos son colineales.
+    Dado cualquier trio de puntos, calcula el único círculo que pasa por los tres.
+    Si los puntos están en línea recta, no existe tal círculo y retorna None.
+    Retorna (centro_x, centro_y, radio).
     """
     x1, y1 = punto_a
     x2, y2 = punto_b
@@ -43,7 +55,7 @@ def circulo_desde_tres_puntos(punto_a, punto_b, punto_c):
     denominador = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
 
     if abs(denominador) < UMBRAL_COLINEALIDAD:
-        return None  # Los 3 puntos son colineales: no existe un círculo único
+        return None  # Los puntos están en línea recta, no hay círculo posible
 
     suma_cuad_1 = x1 ** 2 + y1 ** 2
     suma_cuad_2 = x2 ** 2 + y2 ** 2
@@ -66,21 +78,16 @@ def circulo_desde_tres_puntos(punto_a, punto_b, punto_c):
     return centro_x, centro_y, radio
 
 
-#  Rejilla de bordes dilatada 
+# ── Mapa de bordes con margen ─────────────────────────────────────────────────
 
 def construir_rejilla_bordes(puntos_borde, forma_imagen, delta):
     """
-    Construye una rejilla booleana donde rejilla[y, x] = True significa
-    que hay algún píxel de borde a distancia <= delta de la posición (x, y).
+    Construye una cuadrícula del tamaño de la imagen donde cada celda dice
+    si hay un píxel de borde cerca (a menos de 'delta' píxeles de distancia).
 
-    Esto implementa la función E(xi, yi) del paper en O(1) por consulta.
-    Se calcula UNA SOLA VEZ antes de las generaciones del GA, no en cada
-    evaluación individual.
-
-    Algoritmo:
-        Para cada desplazamiento (dx, dy) dentro del disco de radio delta,
-        se desplazan todos los puntos de borde y se marcan en la rejilla.
-        Así se "dilata" el borde por delta píxeles en todas direcciones.
+    Esto nos permite preguntar "¿hay borde aquí?" en tiempo constante durante
+    la evaluación, en vez de buscar en toda la lista de bordes cada vez.
+    Se calcula una sola vez al inicio de cada búsqueda.
     """
     alto, ancho = forma_imagen[:2]
     rejilla     = np.zeros((alto, ancho), dtype=bool)
@@ -89,6 +96,7 @@ def construir_rejilla_bordes(puntos_borde, forma_imagen, delta):
     xs_borde = np.round(puntos_borde[:, 0]).astype(int)
     ys_borde = np.round(puntos_borde[:, 1]).astype(int)
 
+    # Marcamos como "tiene borde cerca" todos los píxeles dentro del radio delta
     for dx in range(-margen, margen + 1):
         for dy in range(-margen, margen + 1):
             if dx * dx + dy * dy <= delta * delta:
@@ -99,12 +107,20 @@ def construir_rejilla_bordes(puntos_borde, forma_imagen, delta):
     return rejilla
 
 
-#  Función de aptitud (ecuación 8 del paper) 
+# ── Función de aptitud: qué tan bien encaja el círculo ───────────────────────
 
 def evaluar_aptitud(individuo, puntos_borde, rejilla_bordes, forma_imagen,
                     delta=2.0):
     """
-    Calcula F(C) según la ecuación (8) de Ayala-Ramírez et al. (2006).
+    Le pone una nota de 0 a 1 al círculo candidato.
+
+    La idea es simple: tomamos puntos uniformemente repartidos alrededor de la
+    circunferencia del círculo y contamos cuántos de ellos caen sobre un borde
+    real en la imagen. Si la mayoría cae en bordes, la nota es alta. Si casi
+    ninguno cae, es baja.
+
+    Un valor de 1.0 significa que toda la circunferencia tiene borde.
+    Un valor de 0.45 significa que el 45% de la circunferencia tiene borde.
     """
     indice_1, indice_2, indice_3 = individuo
 
@@ -120,66 +136,59 @@ def evaluar_aptitud(individuo, puntos_borde, rejilla_bordes, forma_imagen,
     centro_x, centro_y, radio = resultado
     alto, ancho = forma_imagen[:2]
 
-    # Verificar que el círculo tenga tamaño y posición razonables
+    # Descartamos círculos absurdamente grandes o con centro fuera de la imagen
     radio_maximo = min(alto, ancho) / 2
     if radio > radio_maximo:
         return 0.0
     if not (0 <= centro_x < ancho and 0 <= centro_y < alto):
         return 0.0
 
-    # Ns = número de puntos de muestra = longitud del perímetro en píxeles (ec. 6, 7)
+    # Repartimos puntos alrededor de la circunferencia (uno por píxel del perímetro)
     Ns = max(8, int(2 * math.pi * radio))
 
-    # Generar Ns ángulos uniformes y calcular coordenadas de muestreo
     angulos    = 2 * math.pi * np.arange(Ns) / Ns
     xi_muestra = np.round(centro_x + radio * np.cos(angulos)).astype(int)
     yi_muestra = np.round(centro_y + radio * np.sin(angulos)).astype(int)
 
-    # Filtrar puntos que caen dentro de la imagen — sin np.clip para evitar que
-    # múltiples puntos exteriores se mapeen al mismo píxel del borde y
-    # inflen artificialmente el conteo de borde.
+    # Solo contamos los puntos que caen dentro de la imagen
     dentro     = (xi_muestra >= 0) & (xi_muestra < ancho) & (yi_muestra >= 0) & (yi_muestra < alto)
     xi_validos = xi_muestra[dentro]
     yi_validos = yi_muestra[dentro]
 
-    # Σ E(xi, yi) — sólo puntos dentro de la imagen contribuyen al conteo
     puntos_con_borde = int(np.sum(rejilla_bordes[yi_validos, xi_validos]))
 
-    # F(C) = Σ E(xi, yi) / Ns (ecuación 8)
-    # Se normaliza sobre Ns total: los puntos fuera de la imagen contribuyen 0,
-    # penalizando naturalmente los círculos cuya circunferencia sale de la imagen.
+    # La nota es: puntos con borde / total de puntos muestreados
     aptitud = puntos_con_borde / Ns
 
-    # Penalización para radios pequeños (ecuación 9): f(r) = r/r* si r < r*
+    # Penalizamos los círculos muy pequeños para evitar detectar ruido
     if radio < RADIO_MINIMO:
         aptitud = aptitud * (radio / RADIO_MINIMO)
 
     return float(aptitud)
 
 
-#  Validación de continuidad del arco (sección 3.4 del paper)
+# ── Verificar que el círculo sea realmente circular ───────────────────────────
 
 def verificar_continuidad_circulo(centro_x, centro_y, radio, rejilla_bordes, forma_imagen,
                                    num_sectores=NUM_SECTORES_VALIDACION):
     """
-    Verifica que el borde que soporta al círculo esté distribuido a lo largo de su
-    circunferencia y no concentrado en grupos aislados.
+    Confirma que los bordes que respaldan el círculo estén distribuidos de forma
+    continua alrededor de la circunferencia, no dispersos en puntitos sueltos.
 
-    Divide la circunferencia en num_sectores arcos iguales. Para cada sector determina
-    si tiene al menos un píxel de borde. Luego calcula:
-      - fraccion_sectores   : qué fracción del total de sectores tiene borde.
-      - max_consecutivos     : longitud del arco continuo más largo (en sectores).
+    Dividimos el círculo en partes iguales (como una pizza en 18 porciones) y
+    revisamos cuáles tienen borde. Luego calculamos tres cosas:
+      - fraccion   : qué proporción del total de partes tiene borde.
+      - max_consecutivos : cuántas partes seguidas con borde hay como máximo.
+      - numero_arcos : en cuántos grupos separados están esas partes con borde.
 
-    El criterio del arco continuo es el discriminador clave contra falsos positivos
-    de polígonos: una línea recta interseca un círculo en máximo 2 puntos, por lo que
-    sólo puede producir 1-2 sectores consecutivos de soporte. Un arco real (aunque
-    esté parcialmente ocluido) siempre produce varios sectores continuos.
+    Un círculo real tiene sus bordes juntos formando uno o dos arcos largos.
+    Los polígonos tienen sus bordes dispersos en muchos puntitos separados,
+    uno por cada esquina o lado que cruce la circunferencia.
 
-    Referencia: Kelly y Levine (1997), citado en sección 3.4 del paper.
-    Retorna (fraccion_sectores, max_consecutivos, numero_arcos).
+    Retorna (fraccion, max_consecutivos, numero_arcos).
     """
     alto, ancho = forma_imagen[:2]
-    sectores    = []   # lista booleana: True si el sector tiene al menos un borde
+    sectores    = []  # True si esa porción del círculo tiene borde
 
     for s in range(num_sectores):
         angulo_inicio = 2.0 * math.pi * s       / num_sectores
@@ -199,14 +208,12 @@ def verificar_continuidad_circulo(centro_x, centro_y, radio, rejilla_bordes, for
 
         sectores.append(hay_borde)
 
-    # Fracción total de sectores con borde
-    total_con_borde = 0
-    for tiene in sectores:
-        if tiene:
-            total_con_borde += 1
+    # Contamos cuántas partes tienen borde
+    total_con_borde = sum(1 for tiene in sectores if tiene)
     fraccion = total_con_borde / num_sectores
 
-    # Arco continuo más largo, con wrap-around (el círculo no tiene inicio/fin)
+    # Buscamos la racha más larga de partes seguidas con borde
+    # Duplicamos la lista para manejar el wrap del círculo (que no tiene inicio ni fin)
     secuencia        = sectores + sectores
     max_consecutivos = 0
     consecutivos     = 0
@@ -220,10 +227,7 @@ def verificar_continuidad_circulo(centro_x, centro_y, radio, rejilla_bordes, for
     if max_consecutivos > num_sectores:
         max_consecutivos = num_sectores
 
-    # Número de arcos separados (segmentos True discontinuos en el array circular).
-    # Un círculo real produce 1-2 arcos (el arco visible continuo + a lo sumo una
-    # pequeña zona extra si hay dos oclusiones). Un fantasma de polígonos genera
-    # 3+ arcos, uno por cada arista que cruza la circunferencia.
+    # Contamos cuántos grupos separados de borde hay
     numero_arcos = 0
     if total_con_borde > 0:
         for i in range(num_sectores):
