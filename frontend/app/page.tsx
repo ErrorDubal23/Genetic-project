@@ -27,6 +27,69 @@ interface DetectResult {
 
 type Phase = "idle" | "loading" | "result" | "error";
 
+const SAMPLES = [
+  { file: "sample_1.png", label: "1 círculo"    },
+  { file: "sample_2.png", label: "3 círculos"   },
+  { file: "sample_3.png", label: "mixto"         },
+  { file: "sample_4.png", label: "concéntricos" },
+];
+
+function SampleImages({ onSelect, disabled }: { onSelect: (f: File) => void; disabled: boolean }) {
+  const [hovered, setHovered] = useState<number | null>(null);
+
+  const load = async (filename: string) => {
+    if (disabled) return;
+    const res  = await fetch(`/samples/${filename}`);
+    const blob = await res.blob();
+    onSelect(new File([blob], filename, { type: "image/png" }));
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.18)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 8, fontFamily: "var(--font-mono)" }}>
+        o prueba con una muestra
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+        {SAMPLES.map(({ file, label }, i) => (
+          <motion.button
+            key={file}
+            onClick={() => load(file)}
+            disabled={disabled}
+            onHoverStart={() => setHovered(i)}
+            onHoverEnd={() => setHovered(null)}
+            whileHover={!disabled ? { scale: 1.04 } : {}}
+            whileTap={!disabled ? { scale: 0.97 } : {}}
+            transition={{ type: "spring", stiffness: 400, damping: 22 }}
+            style={{
+              border: `1px solid ${hovered === i && !disabled ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.07)"}`,
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.02)",
+              padding: 0,
+              cursor: disabled ? "not-allowed" : "pointer",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 0,
+              opacity: disabled ? 0.4 : 1,
+              transition: "border-color 0.2s, opacity 0.2s",
+            }}
+          >
+            <img
+              src={`/samples/${file}`}
+              alt={label}
+              style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }}
+            />
+            <span style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-mono)", padding: "4px 0 5px" }}>
+              {label}
+            </span>
+          </motion.button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [file,     setFile]     = useState<File | null>(null);
   const [preview,  setPreview]  = useState<string | null>(null);
@@ -155,6 +218,9 @@ export default function Home() {
               <div style={labelStyle}>imagen de entrada</div>
               <DropZone onFile={handleFile} preview={preview} loading={loading} />
             </div>
+
+            {/* Muestras rápidas */}
+            <SampleImages onSelect={handleFile} disabled={loading} />
 
             {/* Botón Ejecutar GA con animación shimmer */}
             <motion.button

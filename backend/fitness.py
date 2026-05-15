@@ -11,9 +11,16 @@ import numpy as np
 #  Constantes
 RADIO_MINIMO             = 10     # r* en ecuación 9: umbral de penalización (px)
 UMBRAL_COLINEALIDAD      = 1e-10  # Determinante mínimo para que los 3 puntos no sean colineales
-NUM_SECTORES_VALIDACION  = 12     # Sectores en que se divide la circunferencia para validar (sec. 3.4)
-FRACCION_SECTORES_MINIMA = 0.30   # Fracción mínima de sectores con borde
-MIN_SECTORES_CONSECUTIVOS = 5     # Arco continuo mínimo requerido (5 sectores = 150°)
+NUM_SECTORES_VALIDACION  = 18     # Sectores en que se divide la circunferencia (20° cada uno).
+                                  # Con 12 sectores (30°) los polígonos de 4-5 lados pasaban la
+                                  # fracción mínima: rectángulo 4/12=33%, pentágono 5/12=42%.
+                                  # Con 18 sectores esas fracciones caen a 22% y 28%,
+                                  # ambas por debajo del umbral 30% → rechazados automáticamente.
+FRACCION_SECTORES_MINIMA = 0.30   # Fracción mínima de sectores con borde (≥6/18 = 120° de cobertura)
+MIN_SECTORES_CONSECUTIVOS = 6     # Arco continuo mínimo requerido: 6 × 20° = 120°.
+                                  # (antes: 5 × 30° = 150° con 12 sectores)
+                                  # Requiere al menos 120° de arco continuo: círculos parcialmente
+                                  # ocluidos cumplen esto; vértices aislados de polígonos no.
 MAX_ARCOS_SEPARADOS      = 2      # Máximo de segmentos de arco discontinuos permitidos.
                                   # Un círculo real (incluso ocluido) tiene 1-2 arcos continuos.
                                   # Un fantasma de polígonos tiene 3+ arcos dispersos, uno por
