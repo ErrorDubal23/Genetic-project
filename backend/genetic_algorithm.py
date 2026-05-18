@@ -37,21 +37,21 @@ DISTANCIA_MINIMA_PUNTOS = 20 # Los 3 puntos semilla deben estar al menos a esta
                               # distancia entre sí (en píxeles)
 
 # ── Qué tan bueno debe ser un círculo para aceptarlo ─────────────────────────
-APTITUD_MINIMA_PRIMER   = 0.45  # El primer círculo debe tener al menos el 45% de su
+APTITUD_MINIMA_PRIMER   = 0.4  # El primer círculo debe tener al menos el 30% de su
                                  # circunferencia respaldada por bordes reales.
                                  # Con 0.38 se aceptaban círculos muy débiles que en
                                  # imágenes complejas eran casi siempre falsos positivos.
 
-APTITUD_MINIMA_RESTO    = 0.50  # Para el segundo círculo en adelante el umbral es más
+APTITUD_MINIMA_RESTO    = 0.5  # Para el segundo círculo en adelante el umbral es más
                                  # alto, porque después de borrar el primero los bordes
                                  # que quedan son más ruidosos y engañan más fácil.
 
-FRACCION_APTITUD_MINIMA = 0.70  # Cada círculo adicional debe ser al menos el 70% tan
+FRACCION_APTITUD_MINIMA = 0.55  # Cada círculo adicional debe ser al menos el 70% tan
                                  # bueno como el primero. Así evitamos que un primer
                                  # círculo muy claro "habilite" círculos fantasma débiles.
 
 # ── Control del proceso de búsqueda ──────────────────────────────────────────
-MARGEN_SUPRESION         = 8   # Al borrar un círculo ya detectado, eliminamos los bordes
+MARGEN_SUPRESION         = 3   # Al borrar un círculo ya detectado, eliminamos los bordes
                                 # dentro de este margen (en múltiplos de delta)
 MAX_CIRCULOS_POSIBLES    = 20  # Límite de seguridad: nunca reportamos más de 20 círculos
 MINIMOS_PUNTOS_RESTANTES = 50  # Si quedan menos puntos de borde que esto, paramos
@@ -358,7 +358,7 @@ class DetectorCirculosGA:
 
             # Si los bordes no forman un arco continuo, no es un círculo real
             if not self._validar_circulo(circulo, rejilla_actual, forma_imagen):
-                break
+                continue
 
             # Si ya encontramos uno casi igual, lo ignoramos
             if self._es_duplicado(circulo, circulos_encontrados):

@@ -15,8 +15,8 @@ MAX_PUNTOS_BORDE     = 3000    # Límite de puntos que le pasamos al GA para no 
 # ── Configuración de la supresión de líneas rectas ────────────────────────────
 BRECHA_MAXIMA_LINEA  = 8  # Si dos trozos de línea recta están a menos de esto,
                            # los tratamos como una sola línea (en píxeles)
-GROSOR_MASCARA_LINEA = 5  # Qué tan grueso es el borrador que usamos para tapar
-                           # las líneas detectadas. 5px asegura tapar también las esquinas.
+GROSOR_MASCARA_LINEA = 7  # Qué tan grueso es el borrador que usamos para tapar
+                           # las líneas detectadas. 7px asegura tapar también las esquinas.
 
 
 # ── Cargar imagen ─────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ def suprimir_lineas_rectas(mapa_bordes: np.ndarray, forma_imagen: tuple) -> np.n
     diagonal    = math.sqrt(alto ** 2 + ancho ** 2)
 
     # Líneas más cortas que esto no se consideran (escala con el tamaño de la imagen)
-    longitud_min = max(40, int(diagonal * 0.12))
+    longitud_min =  max(60, int(diagonal * 0.18))
     umbral_votos = max(20, int(longitud_min * 0.55))
 
     lineas = cv2.HoughLinesP(

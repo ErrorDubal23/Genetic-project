@@ -154,11 +154,59 @@ def evaluar_aptitud(individuo, puntos_borde, rejilla_bordes, forma_imagen,
     dentro     = (xi_muestra >= 0) & (xi_muestra < ancho) & (yi_muestra >= 0) & (yi_muestra < alto)
     xi_validos = xi_muestra[dentro]
     yi_validos = yi_muestra[dentro]
+    
 
-    puntos_con_borde = int(np.sum(rejilla_bordes[yi_validos, xi_validos]))
+    if len(xi_validos) == 0:
+        return 0.0
 
-    # La nota es: puntos con borde / total de puntos muestreados
-    aptitud = puntos_con_borde / Ns
+    bordes = rejilla_bordes[yi_validos, xi_validos]
+
+    puntos_con_borde = int(np.sum(bordes))
+
+    aptitud_base = puntos_con_borde / max(1, len(xi_validos))
+
+    max_consecutivos = 0
+    actual = 0
+
+    for b in np.concatenate([bordes, bordes]):
+        if b:
+            actual += 1
+            max_consecutivos = max(max_consecutivos, actual)
+        else:
+            actual = 0
+
+    max_consecutivos = min(max_consecutivos, len(bordes))
+
+    fraccion_consecutiva = max_consecutivos / max(1, len(bordes))
+
+    aptitud = aptitud_base * (0.5 + 0.5 * fraccion_consecutiva)
+
+    bordes = rejilla_bordes[yi_validos, xi_validos]
+
+    puntos_con_borde = int(np.sum(bordes))
+
+    aptitud_base = puntos_con_borde / max(1, len(xi_validos))
+
+    # =========================================
+    # Penalización por fragmentación
+    # =========================================
+
+    max_consecutivos = 0
+    actual = 0
+
+    for b in np.concatenate([bordes, bordes]):
+        if b:
+            actual += 1
+            max_consecutivos = max(max_consecutivos, actual)
+        else:
+            actual = 0
+
+    max_consecutivos = min(max_consecutivos, len(bordes))
+
+    fraccion_consecutiva = max_consecutivos / max(1, len(bordes))
+
+    # Penalizamos bordes dispersos
+    aptitud = aptitud_base * fraccion_consecutiva
 
     # Penalizamos los círculos muy pequeños para evitar detectar ruido
     if radio < RADIO_MINIMO:
